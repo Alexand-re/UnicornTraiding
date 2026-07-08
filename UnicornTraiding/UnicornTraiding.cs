@@ -1,10 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Linq;
-using System.Threading.Tasks;
 using cAlgo.API;
-using cAlgo.API.Internals;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
@@ -20,38 +14,38 @@ namespace cAlgo.Robots
         public double InitialDropPct { get; set; } = 0.02935121389541366;
         public double MaxCorrelationThreshold { get; set; } = 0.8189537877538027;
         public int CorrelationLookback { get; set; } = 10;
-        public double SystemicCrashThreshold { get; set; } = 0.87;
-        public double SystemicMomentumFactor { get; set; } = 0.47066031073716486;
+        public double SystemicCrashThreshold { get; set; } = 0.8285244438697232;
+        public double SystemicMomentumFactor { get; set; } = 0.32077447344585064;
         public int MomentumLookback { get; set; } = 5;
-        public int WindowSize { get; set; } = 28;
-        public double GridSpacingPct { get; set; } = 0.011499979506013905;
-        public double ScalingRatio { get; set; } = 4.055311586267925;
+        public int WindowSize { get; set; } = 16;
+        public double GridSpacingPct { get; set; } = 0.011120756678805108;
+        public double ScalingRatio { get; set; } = 4.869340749396636;
         public bool UseNormalizedLeverage { get; set; } = true;
         public int MaxTranchesPerSymbol { get; set; } = 2;
         public int MinDaysBetweenTranches { get; set; } = 2;
         public bool SlBasedOnFirstTranche { get; set; } = true;
         public List<double>? TrancheWeights { get; set; } = null;
-        public double SymbolStopLossPct { get; set; } = 0.5062874225928855;
-        public double TrailingStopPct { get; set; } = 0.2672963328507246;
-        public double AtrTrailingStopMultiplier { get; set; } = 8.961016233526642;
+        public double SymbolStopLossPct { get; set; } = 0.47731821875894365;
+        public double TrailingStopPct { get; set; } = 0.07412747797748423;
+        public double AtrTrailingStopMultiplier { get; set; } = 7.620128704989389;
         public double TargetProfitFinalPct { get; set; } = 0.09015617075849146;
         public List<TakeProfitStage> Stages { get; set; } = new()
         {
-            new TakeProfitStage {ProfitThresholdPct = 0.014067672548939883, SellRatio = 0.28937622255821693},
-            new TakeProfitStage {ProfitThresholdPct = 0.04800945602473259, SellRatio = 0.2885118512001836},
-            new TakeProfitStage {ProfitThresholdPct = 0.07262607711817924, SellRatio = 0.1533763735140414}
+            new TakeProfitStage {ProfitThresholdPct = 0.014658137902697698, SellRatio = 0.3012148830158754},
+            new TakeProfitStage {ProfitThresholdPct = 0.06381459372129122, SellRatio = 0.27301484802108916},
+            new TakeProfitStage {ProfitThresholdPct = 0.07443756027241621, SellRatio = 0.10777701898293367}
         };
-        public TrailingStopMode TsMode { get; set; } = TrailingStopMode.None;
+        public TrailingStopMode TsMode { get; set; } = TrailingStopMode.AllPosition;
         public bool ExitTrancheAtStageThreshold { get; set; } = true;
         public double LeverageMultiplier { get; set; } = 4.0;
         public double MaxLeverageLimit { get; set; } = 4.7;
         public double RecoveryLeverageMultiplier { get; set; } = 0.26615483312222865;
         public int RecoveryDurationDays { get; set; } = 22;
-        public double CircuitBreakerPct { get; set; } = 0.9;
-        public double TrailingEquityStopPct { get; set; } = 0.04511898068018211;
+        public double CircuitBreakerPct { get; set; } = 0.9528249264009413;
+        public double TrailingEquityStopPct { get; set; } = 0.03961103479359813;
         public double VolatilityTarget { get; set; } = 0.0114;
         public double VolatilityMinMultiplier { get; set; } = 1.0;
-        public bool UseRegimeFilter { get; set; } = true;
+        public bool UseRegimeFilter { get; set; } = false;
         public bool DisableRotationExit { get; set; } = true;
         public double SlippagePct { get; set; } = 0.00025;
         public bool UseFractionalShares { get; set; } = true;
