@@ -1222,8 +1222,8 @@ namespace cAlgo.Robots
                     Print(string.Format("[UnicornTrading cTrader] MOC trigger reached. EST: {0:HH:mm:ss}", nowEst));
                     _mocProcessedForToday = true;
                     
-                    // Run MOC logic asynchronously in a background thread to prevent UI freezing
-                    Task.Run(async () =>
+                    // Run MOC logic on the main thread (required for ExecuteMarketOrder/ClosePosition)
+                    BeginInvokeOnMainThread(async () =>
                     {
                         try
                         {
