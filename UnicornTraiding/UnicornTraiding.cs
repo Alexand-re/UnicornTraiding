@@ -1223,15 +1223,15 @@ namespace cAlgo.Robots
                     _mocProcessedForToday = true;
                     
                     // Run MOC logic on the main thread (required for ExecuteMarketOrder/ClosePosition)
-                    BeginInvokeOnMainThread(async () =>
+                    BeginInvokeOnMainThread(() =>
                     {
                         try
                         {
-                            await ProcessMocLogicAsync(nowEst.Date);
+                            ProcessMocLogic(nowEst.Date);
                         }
                         catch (Exception ex)
                         {
-                            Print("[UnicornTrading cTrader] ProcessMocLogicAsync Error: " + ex.Message);
+                            Print("[UnicornTrading cTrader] ProcessMocLogic Error: " + ex.Message);
                         }
                     });
                 }
@@ -1269,14 +1269,14 @@ namespace cAlgo.Robots
             return result;
         }
 
-        private async Task ProcessMocLogicAsync(DateTime today)
+        private void ProcessMocLogic(DateTime today)
         {
             Print("[UnicornTrading cTrader] Running MOC Logic...");
 
             try
             {
                 // 1. Get latest state
-                CrashCatcherDailyState latestState = await GetLatestStateAsync();
+                CrashCatcherDailyState latestState = GetLatestState();
                 if (latestState == null)
                 {
                     double initialBalance = Account.Balance;
@@ -1303,7 +1303,7 @@ namespace cAlgo.Robots
 
                 // 2. Load universe and sector maps
                 Print("[UnicornTrading cTrader] Loading universe history and sector map from MongoDB...");
-                var universeDocs = await _universeHistoryCollection.Find(Builders<BsonDocument>.Filter.Empty).ToListAsync();
+                var universeDocs = _universeHistoryCollection.Find(Builders<BsonDocument>.Filter.Empty).ToList();
                 var universeHistoryMap = new SortedDictionary<DateTime, List<string>>();
                 foreach (var doc in universeDocs)
                 {
@@ -1315,7 +1315,7 @@ namespace cAlgo.Robots
                     }
                 }
 
-                var assetDocs = await _assetInfoCollection.Find(Builders<BsonDocument>.Filter.Empty).ToListAsync();
+                var assetDocs = _assetInfoCollection.Find(Builders<BsonDocument>.Filter.Empty).ToList();
                 var sectorMap = new Dictionary<string, string>();
                 foreach (var doc in assetDocs)
                 {
@@ -1621,7 +1621,7 @@ namespace cAlgo.Robots
                 _engine.UpdateDailyMetrics(latestState, targetExecutionDate, prevNav, dayRes.SystemicCrashActive, buys, sellsAll);
 
                 // Save back to Mongo
-                await SaveStateAsync(latestState);
+                SaveState(latestState);
                 Print(string.Format("[UnicornTrading cTrader] MOC Logic Complete. NAV: {0:N2} | Positions: {1}",
                     latestState.TotalEquity, latestState.ActiveOrders.Count));
             }
@@ -1631,18 +1631,18 @@ namespace cAlgo.Robots
             }
         }
 
-        private async Task<CrashCatcherDailyState> GetLatestStateAsync()
+        private CrashCatcherDailyState GetLatestState()
         {
-            return await _stateCollection.Find(Builders<CrashCatcherDailyState>.Filter.Empty)
+            return _stateCollection.Find(Builders<CrashCatcherDailyState>.Filter.Empty)
                 .SortByDescending(d => d.UpdatedAt)
-                .FirstOrDefaultAsync();
+                .FirstOrDefault();
         }
 
-        private async Task SaveStateAsync(CrashCatcherDailyState state)
+        private void SaveState(CrashCatcherDailyState state)
         {
             state.UpdatedAt = DateTime.UtcNow;
             var filter = Builders<CrashCatcherDailyState>.Filter.Eq(s => s.Id, state.Id);
-            await _stateCollection.ReplaceOneAsync(filter, state, new ReplaceOptions { IsUpsert = true });
+            _stateCollection.ReplaceOne(filter, state, new ReplaceOptions { IsUpsert = true });
         }
     }
 }
