@@ -1178,10 +1178,23 @@ namespace cAlgo.Robots
                 {
                     if (!string.IsNullOrEmpty(symbol))
                     {
+                        // Ignore retired/removed/expired/close-only symbols
+                        if (symbol.Contains("removed", StringComparison.OrdinalIgnoreCase) ||
+                            symbol.Contains("delisted", StringComparison.OrdinalIgnoreCase) ||
+                            symbol.Contains("expired", StringComparison.OrdinalIgnoreCase) ||
+                            symbol.Contains("close", StringComparison.OrdinalIgnoreCase) ||
+                            symbol.Contains("only", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
                         _availableBrokerSymbols.Add(symbol);
                     }
                 }
                 Print($"[UnicornTrading cTrader] Loaded {_availableBrokerSymbols.Count} available symbols from broker.");
+                
+                // Print any matching S&P 500 CFD candidates for verification
+                var candidates = _availableBrokerSymbols.Where(s => s.Contains("500") || s.Contains("SPX", StringComparison.OrdinalIgnoreCase)).ToList();
+                Print("[UnicornTrading cTrader] S&P 500 candidates found: " + string.Join(", ", candidates));
             }
             catch (Exception ex)
             {
