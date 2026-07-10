@@ -1266,12 +1266,36 @@ namespace cAlgo.Robots
 
         private string GetBrokerSymbol(string standardSymbol)
         {
-            // If SPY override is defined and exists in broker's database, use it
-            if (standardSymbol == "SPY" && !string.IsNullOrEmpty(SpySymbolOverride))
+            // Special resolution for SPY (S&P 500 Index)
+            if (standardSymbol == "SPY")
             {
-                if (_availableBrokerSymbols.Contains(SpySymbolOverride))
+                // Try override first if specified
+                if (!string.IsNullOrEmpty(SpySymbolOverride) && _availableBrokerSymbols.Contains(SpySymbolOverride))
                 {
                     return SpySymbolOverride;
+                }
+
+                // Check exact SPY match first
+                if (_availableBrokerSymbols.Contains("SPY"))
+                {
+                    return "SPY";
+                }
+
+                // Try common index CFD names
+                string[] spyFallbacks = { "US500", "SPX500", "USA500", "SPX", "US 500", "S&P500", "US500.cfd", "#US500" };
+                foreach (var fallback in spyFallbacks)
+                {
+                    if (_availableBrokerSymbols.Contains(fallback))
+                    {
+                        return fallback;
+                    }
+                }
+
+                // Scan for any available symbol containing "500" or "SPX"
+                string dynamicFallback = _availableBrokerSymbols.FirstOrDefault(s => s.Contains("500") || s.Contains("SPX", StringComparison.OrdinalIgnoreCase));
+                if (dynamicFallback != null)
+                {
+                    return dynamicFallback;
                 }
             }
 
@@ -1418,6 +1442,7 @@ namespace cAlgo.Robots
                 foreach (var standardSym in symbolsToFetch)
                 {
                     string brokerSym = GetBrokerSymbol(standardSym);
+                    if (!_availableBrokerSymbols.Contains(brokerSym)) continue;
                     var symbolInfo = Symbols.GetSymbol(brokerSym);
                     if (symbolInfo == null) continue;
 
@@ -1555,7 +1580,7 @@ namespace cAlgo.Robots
                 foreach (var sym in rawUniverse)
                 {
                     string brokerSym = GetBrokerSymbol(sym);
-                    if (Symbols.GetSymbol(brokerSym) != null)
+                    if (_availableBrokerSymbols.Contains(brokerSym))
                     {
                         currentUniverse.Add(sym);
                     }
@@ -1643,10 +1668,15 @@ namespace cAlgo.Robots
                     try
                     {
                         string brokerSym = GetBrokerSymbol(action.Symbol);
+                        if (!_availableBrokerSymbols.Contains(brokerSym))
+                        {
+                            Print($"[UnicornTrading Buy] Error: Symbol {brokerSym} not supported by broker.");
+                            continue;
+                        }
                         var symbolInfo = Symbols.GetSymbol(brokerSym);
                         if (symbolInfo == null)
                         {
-                            Print($"[UnicornTrading Buy] Error: Symbol {brokerSym} not found in broker database.");
+                            Print($"[UnicornTrading Buy] Error: Symbol {brokerSym} failed to load.");
                             continue;
                         }
 
@@ -1784,11 +1814,17 @@ namespace cAlgo.Robots
                 foreach (var standardSym in symbolsToTest)
                 {
                     string brokerSym = GetBrokerSymbol(standardSym);
+                    if (!_availableBrokerSymbols.Contains(brokerSym))
+                    {
+                        Print($"[Verification] ERROR: Symbol '{standardSym}' (resolved to '{brokerSym}') is NOT supported by broker.");
+                        failures++;
+                        continue;
+                    }
                     var symbolInfo = Symbols.GetSymbol(brokerSym);
 
                     if (symbolInfo == null)
                     {
-                        Print($"[Verification] ERROR: Symbol '{standardSym}' (resolved to '{brokerSym}') is NOT supported/found by broker.");
+                        Print($"[Verification] ERROR: Symbol '{standardSym}' (resolved to '{brokerSym}') failed to load.");
                         failures++;
                         continue;
                     }
@@ -1812,6 +1848,26 @@ namespace cAlgo.Robots
                 if (!_availableBrokerSymbols.Contains(spyBrokerSym))
                 {
                     Print($"[Verification] CRITICAL ERROR: SPY (mapped to '{spyBrokerSym}') is not accessible in the broker database. Strategy will crash at MOC!");
+                    
+                    // Search for indices containing S&P, 500, SPX, SPY, USA or US
+                    var indexSuggestions = new List<string>();
+                    string[] keywords = { "500", "SPX", "SPY", "US500", "USA500", "US Tech 100", "NAS100", "USTEC", "US30" };
+                    foreach (var s in _availableBrokerSymbols)
+                    {
+                        foreach (var kw in keywords)
+                        {
+                            if (s.Contains(kw, StringComparison.OrdinalIgnoreCase))
+                            {
+                                indexSuggestions.Add(s);
+                                break;
+                            }
+                        }
+                    }
+
+                    if (indexSuggestions.Any())
+                    {
+                        Print("[Verification] SUGGESTION: Your broker doesn't have SPY. You can try setting the 'SPY Symbol Override' parameter in the cBot UI to one of these available indices: " + string.Join(", ", indexSuggestions.Take(15)));
+                    }
                 }
             }
             catch (Exception ex)
