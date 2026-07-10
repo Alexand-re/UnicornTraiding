@@ -1146,6 +1146,8 @@ namespace cAlgo.Robots
         private DateTime _lastHeartbeatUtc = DateTime.MinValue;
         private readonly CrashCatcherMstpEngine _engine = new();
 
+        private readonly HashSet<string> _availableBrokerSymbols = new(StringComparer.OrdinalIgnoreCase);
+
         private static readonly TimeZoneInfo EasternTimeZone = GetEasternTimeZone();
 
         private static TimeZoneInfo GetEasternTimeZone()
@@ -1169,6 +1171,23 @@ namespace cAlgo.Robots
         {
             Print("[UnicornTrading cTrader] Initializing...");
 
+            // Cache available symbol names from broker
+            try
+            {
+                foreach (var symbol in Symbols)
+                {
+                    if (!string.IsNullOrEmpty(symbol))
+                    {
+                        _availableBrokerSymbols.Add(symbol);
+                    }
+                }
+                Print($"[UnicornTrading cTrader] Loaded {_availableBrokerSymbols.Count} available symbols from broker.");
+            }
+            catch (Exception ex)
+            {
+                Print("[UnicornTrading cTrader] Failed to cache broker symbols: " + ex.Message);
+            }
+
             try
             {
                 var client = new MongoClient(MongoConnectionString);
@@ -1183,6 +1202,9 @@ namespace cAlgo.Robots
             {
                 Print("[UnicornTrading cTrader] MongoDB connection failed: " + ex.Message);
             }
+
+            // Perform startup verification checks
+            PerformStartupVerification();
 
             // Start 10-second scheduler timer
             Timer.Start(TimeSpan.FromSeconds(10));
@@ -1244,10 +1266,50 @@ namespace cAlgo.Robots
 
         private string GetBrokerSymbol(string standardSymbol)
         {
-            if (standardSymbol == "SPY")
+            // If SPY override is defined and exists in broker's database, use it
+            if (standardSymbol == "SPY" && !string.IsNullOrEmpty(SpySymbolOverride))
             {
-                return SpySymbolOverride;
+                if (_availableBrokerSymbols.Contains(SpySymbolOverride))
+                {
+                    return SpySymbolOverride;
+                }
             }
+
+            // 1. Check with configured prefix/suffix if defined and exists
+            if (!string.IsNullOrEmpty(SymbolPrefix) || !string.IsNullOrEmpty(SymbolSuffix))
+            {
+                string configuredName = SymbolPrefix + standardSymbol + SymbolSuffix;
+                if (_availableBrokerSymbols.Contains(configuredName))
+                {
+                    return configuredName;
+                }
+            }
+
+            // 2. Check exact match
+            if (_availableBrokerSymbols.Contains(standardSymbol))
+            {
+                return standardSymbol;
+            }
+
+            // 3. Auto-resolve common suffixes
+            string[] commonSuffixes = { ".US", ".US-Cash", "-Cash", ".m", ".uk", ".de" };
+            foreach (var suffix in commonSuffixes)
+            {
+                string candidate = standardSymbol + suffix;
+                if (_availableBrokerSymbols.Contains(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            // 4. Try case-insensitive lookup
+            string found = _availableBrokerSymbols.FirstOrDefault(s => s.Equals(standardSymbol, StringComparison.OrdinalIgnoreCase));
+            if (found != null)
+            {
+                return found;
+            }
+
+            // Fallback: return configured format
             return SymbolPrefix + standardSymbol + SymbolSuffix;
         }
 
@@ -1265,6 +1327,18 @@ namespace cAlgo.Robots
             if (!string.IsNullOrEmpty(SymbolSuffix) && result.EndsWith(SymbolSuffix))
             {
                 result = result.Substring(0, result.Length - SymbolSuffix.Length);
+                return result;
+            }
+
+            // Auto strip common suffixes
+            string[] commonSuffixes = { ".US", ".US-Cash", "-Cash", ".m", ".uk", ".de" };
+            foreach (var suffix in commonSuffixes)
+            {
+                if (result.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                {
+                    result = result.Substring(0, result.Length - suffix.Length);
+                    break;
+                }
             }
             return result;
         }
@@ -1643,6 +1717,107 @@ namespace cAlgo.Robots
             state.UpdatedAt = DateTime.UtcNow;
             var filter = Builders<CrashCatcherDailyState>.Filter.Eq(s => s.Id, state.Id);
             _stateCollection.ReplaceOne(filter, state, new ReplaceOptions { IsUpsert = true });
+        }
+
+        private void PerformStartupVerification()
+        {
+            Print("[UnicornTrading cTrader] Performing startup verification checks...");
+
+            try
+            {
+                if (_database == null)
+                {
+                    Print("[Verification] FAILED: MongoDB database is not initialized.");
+                    return;
+                }
+
+                // 1. Check MongoDB state retrieval
+                Print("[Verification] Fetching latest state from MongoDB...");
+                CrashCatcherDailyState latestState = GetLatestState();
+                if (latestState == null)
+                {
+                    Print("[Verification] WARNING: No previous state found in MongoDB. Will initialize on trigger.");
+                }
+                else
+                {
+                    Print($"[Verification] Found state for date: {latestState.Date:yyyy-MM-dd} with {latestState.ActiveOrders.Count} active orders.");
+                }
+
+                // 2. Compile list of symbols to test
+                var symbolsToTest = new HashSet<string> { "SPY" };
+                
+                if (latestState != null && latestState.ActiveOrders != null)
+                {
+                    foreach (var o in latestState.ActiveOrders)
+                    {
+                        if (!string.IsNullOrEmpty(o.Symbol))
+                        {
+                            symbolsToTest.Add(o.Symbol);
+                        }
+                    }
+                }
+
+                try
+                {
+                    var latestUniverseDoc = _universeHistoryCollection.Find(Builders<BsonDocument>.Filter.Empty)
+                        .Sort(Builders<BsonDocument>.Sort.Descending("Date"))
+                        .FirstOrDefault();
+                    if (latestUniverseDoc != null && latestUniverseDoc.Contains("TopSymbols"))
+                    {
+                        var topSymbols = latestUniverseDoc["TopSymbols"].AsBsonArray.Select(s => s.AsString).ToList();
+                        foreach (var s in topSymbols)
+                        {
+                            symbolsToTest.Add(s);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Print("[Verification] WARNING: Could not fetch latest universe history from MongoDB: " + ex.Message);
+                }
+
+                Print($"[Verification] Testing broker access for {symbolsToTest.Count} symbols...");
+
+                int successes = 0;
+                int failures = 0;
+
+                foreach (var standardSym in symbolsToTest)
+                {
+                    string brokerSym = GetBrokerSymbol(standardSym);
+                    var symbolInfo = Symbols.GetSymbol(brokerSym);
+
+                    if (symbolInfo == null)
+                    {
+                        Print($"[Verification] ERROR: Symbol '{standardSym}' (resolved to '{brokerSym}') is NOT supported/found by broker.");
+                        failures++;
+                        continue;
+                    }
+
+                    var ctraderBars = MarketData.GetBars(TimeFrame.Daily, brokerSym);
+                    if (ctraderBars == null || ctraderBars.Count == 0)
+                    {
+                        Print($"[Verification] ERROR: Found '{brokerSym}' but failed to fetch historical daily bars.");
+                        failures++;
+                    }
+                    else
+                    {
+                        Print($"[Verification] SUCCESS: '{standardSym}' mapped to '{brokerSym}' (Bid: {symbolInfo.Bid}, Daily Bars: {ctraderBars.Count})");
+                        successes++;
+                    }
+                }
+
+                Print($"[Verification] Verification complete. Successes: {successes}/{symbolsToTest.Count}. Failures: {failures}.");
+
+                string spyBrokerSym = GetBrokerSymbol("SPY");
+                if (!_availableBrokerSymbols.Contains(spyBrokerSym))
+                {
+                    Print($"[Verification] CRITICAL ERROR: SPY (mapped to '{spyBrokerSym}') is not accessible in the broker database. Strategy will crash at MOC!");
+                }
+            }
+            catch (Exception ex)
+            {
+                Print("[Verification] Critical exception during verification: " + ex.Message);
+            }
         }
     }
 }
