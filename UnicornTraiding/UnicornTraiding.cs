@@ -10,45 +10,103 @@ namespace cAlgo.Robots
     // ==========================================================================================
     public class CrashCatcherMstpConfiguration
     {
-        public int UniverseSize { get; set; } = 5;
+        public int UniverseSize { get; set; } = 4;
         public double InitialDropPct { get; set; } = 0.02935121389541366;
+        public bool UseAtrScaledDrop { get; set; } = false;
+        public double DropAtrFactor { get; set; } = 1.4745249118537291;
+        public double ReferenceAtrPct { get; set; } = 0.01;
         public double MaxCorrelationThreshold { get; set; } = 0.8189537877538027;
         public int CorrelationLookback { get; set; } = 10;
-        public double SystemicCrashThreshold { get; set; } = 0.8285244438697232;
-        public double SystemicMomentumFactor { get; set; } = 0.32077447344585064;
+        public double SystemicCrashThreshold { get; set; } = 0.5701078946330156;
+        public double SystemicMomentumFactor { get; set; } = 0.4408433402613007;
         public int MomentumLookback { get; set; } = 5;
-        public int WindowSize { get; set; } = 16;
-        public double GridSpacingPct { get; set; } = 0.011120756678805108;
+        public int WindowSize { get; set; } = 10;
+        public double GridSpacingPct { get; set; } = 0.011499979506013905;
+        public bool UseAtrScaledGrid { get; set; } = true;
+        public double GridAtrFactor { get; set; } = 0.30492350349897684;
         public double ScalingRatio { get; set; } = 4.869340749396636;
         public bool UseNormalizedLeverage { get; set; } = true;
         public int MaxTranchesPerSymbol { get; set; } = 2;
         public int MinDaysBetweenTranches { get; set; } = 2;
         public bool SlBasedOnFirstTranche { get; set; } = true;
         public List<double>? TrancheWeights { get; set; } = null;
-        public double SymbolStopLossPct { get; set; } = 0.47731821875894365;
-        public double TrailingStopPct { get; set; } = 0.07412747797748423;
-        public double AtrTrailingStopMultiplier { get; set; } = 7.620128704989389;
+        public double SymbolStopLossPct { get; set; } = 0.45813735488715457;
+        public double TrailingStopPct { get; set; } = 0.30647875783335354;
+        public double AtrTrailingStopMultiplier { get; set; } = 8.729303828780214;
         public double TargetProfitFinalPct { get; set; } = 0.09015617075849146;
         public List<TakeProfitStage> Stages { get; set; } = new()
         {
-            new TakeProfitStage {ProfitThresholdPct = 0.014658137902697698, SellRatio = 0.3012148830158754},
-            new TakeProfitStage {ProfitThresholdPct = 0.06381459372129122, SellRatio = 0.27301484802108916},
-            new TakeProfitStage {ProfitThresholdPct = 0.07443756027241621, SellRatio = 0.10777701898293367}
+            new TakeProfitStage {ProfitThresholdPct = 0.015474284270716477, SellRatio = 0.2388255434737977},
+            new TakeProfitStage {ProfitThresholdPct = 0.04136917216779146, SellRatio = 0.2039360993552324},
+            new TakeProfitStage {ProfitThresholdPct = 0.053253583107269235, SellRatio = 0.15756063341087556}
         };
         public TrailingStopMode TsMode { get; set; } = TrailingStopMode.AllPosition;
         public bool ExitTrancheAtStageThreshold { get; set; } = true;
         public double LeverageMultiplier { get; set; } = 4.0;
-        public double MaxLeverageLimit { get; set; } = 4.7;
+        public double MaxLeverageLimit { get; set; } = 3.6;
         public double RecoveryLeverageMultiplier { get; set; } = 0.26615483312222865;
         public int RecoveryDurationDays { get; set; } = 22;
-        public double CircuitBreakerPct { get; set; } = 0.9528249264009413;
-        public double TrailingEquityStopPct { get; set; } = 0.03961103479359813;
+        public double CircuitBreakerPct { get; set; } = 0.7;
+        public double TrailingEquityStopPct { get; set; } = 0.30000000000000004;
         public double VolatilityTarget { get; set; } = 0.0114;
         public double VolatilityMinMultiplier { get; set; } = 1.0;
-        public bool UseRegimeFilter { get; set; } = false;
+        public bool UseRegimeFilter { get; set; } = true;
         public bool DisableRotationExit { get; set; } = true;
         public double SlippagePct { get; set; } = 0.00025;
+        public double MaintenanceMarginPct { get; set; } = 0.30;
         public bool UseFractionalShares { get; set; } = true;
+
+        public static CrashCatcherMstpConfiguration GetFtmoConfiguration()
+        {
+            return new CrashCatcherMstpConfiguration
+            {
+                UniverseSize = 4,
+                InitialDropPct = 0.02935121389541366,
+                UseAtrScaledDrop = false,
+                DropAtrFactor = 1.4745249118537291,
+                ReferenceAtrPct = 0.008268527026878915,
+                MaxCorrelationThreshold = 0.8222779869438512,
+                CorrelationLookback = 10,
+                SystemicCrashThreshold = 0.5701078946330156,
+                SystemicMomentumFactor = 0.4408433402613007,
+                MomentumLookback = 5,
+                WindowSize = 10,
+                GridSpacingPct = 0.011499979506013905,
+                UseAtrScaledGrid = true,
+                GridAtrFactor = 0.30492350349897684,
+                ScalingRatio = 4.869340749396636,
+                UseNormalizedLeverage = false,
+                MaxTranchesPerSymbol = 2,
+                MinDaysBetweenTranches = 2,
+                SlBasedOnFirstTranche = true,
+                TrancheWeights = null,
+                SymbolStopLossPct = 0.4028039183946345,
+                TrailingStopPct = 0.30647875783335354,
+                AtrTrailingStopMultiplier = 8.729303828780214,
+                TargetProfitFinalPct = 0.08670601305165608,
+                Stages = new List<TakeProfitStage>
+                {
+                    new TakeProfitStage { ProfitThresholdPct = 0.015474284270716477, SellRatio = 0.2388255434737977 },
+                    new TakeProfitStage { ProfitThresholdPct = 0.04136917216779146, SellRatio = 0.2039360993552324 },
+                    new TakeProfitStage { ProfitThresholdPct = 0.053253583107269235, SellRatio = 0.15756063341087556 }
+                },
+                TsMode = TrailingStopMode.IndividualTranche,
+                ExitTrancheAtStageThreshold = true,
+                LeverageMultiplier = 1.0,
+                MaxLeverageLimit = 1.0,
+                RecoveryLeverageMultiplier = 1.0,
+                RecoveryDurationDays = 26,
+                CircuitBreakerPct = 0.9034130913174773,
+                TrailingEquityStopPct = 0.1,
+                VolatilityTarget = 0.0114,
+                VolatilityMinMultiplier = 1.0,
+                UseRegimeFilter = true,
+                DisableRotationExit = true,
+                SlippagePct = 0.00025,
+                MaintenanceMarginPct = 0.3,
+                UseFractionalShares = true
+            };
+        }
     }
 
     public class TakeProfitStage
@@ -772,6 +830,15 @@ namespace cAlgo.Robots
                 currentLev *= config.RecoveryLeverageMultiplier;
             }
 
+            if (config.MaintenanceMarginPct > 0)
+            {
+                double marginLimit = 1.0 / config.MaintenanceMarginPct;
+                if (currentLev > marginLimit)
+                {
+                    currentLev = marginLimit;
+                }
+            }
+
             double totalWeightPerSymbol = 0;
             for (int i = 0; i < config.MaxTranchesPerSymbol; i++)
             {
@@ -783,6 +850,28 @@ namespace cAlgo.Robots
 
             double baseRateRaw = currentLev / (config.UniverseSize * totalWeightPerSymbol);
 
+            double exposureAfterSells = 0;
+            foreach (CrashCatcherOrder o in state.ActiveOrders)
+            {
+                if (res.Actions.Any(a => a.Symbol == o.Symbol && a.Type == ActionType.Liquidate)) continue;
+                if (res.Actions.Any(a => a.TargetOrder == o && a.Type == ActionType.Sell)) continue;
+
+                double qty = o.Qty;
+                TradingAction? partialSellAction =
+                    res.Actions.FirstOrDefault(a => a.TargetOrder == o && a.Type == ActionType.PartialSell);
+                if (partialSellAction != null)
+                {
+                    qty -= partialSellAction.Quantity;
+                }
+
+                if (qty > 0)
+                {
+                    exposureAfterSells += qty * o.CurrentPrice;
+                }
+            }
+
+            double remainingBuyingPower = (currentLev * state.TotalEquity) - exposureAfterSells;
+
             HashSet<string> topSymbols = universe.Take(config.UniverseSize).ToHashSet();
             HashSet<string> heldSymbols = state.ActiveOrders.Select(o => o.Symbol).Distinct().ToHashSet();
 
@@ -791,6 +880,8 @@ namespace cAlgo.Robots
                 if (state.DynamicBlacklist.TryGetValue(sym, out DateTime bEnd) && day < bEnd) continue;
                 if (!heldSymbols.Contains(sym) && heldSymbols.Count < config.UniverseSize)
                 {
+                    if (remainingBuyingPower <= 0) break;
+
                     if (!idxs.TryGetValue(sym, out int idx)) continue;
                     double price = all[sym][idx].Close;
 
@@ -805,6 +896,13 @@ namespace cAlgo.Robots
                         double requiredDrop = state.RecoveryDaysRemaining > 0
                             ? 0.0
                             : config.InitialDropPct;
+
+                        if (state.RecoveryDaysRemaining <= 0 && config.UseAtrScaledDrop)
+                        {
+                            double atr = GetAtr(sym, all[sym], idx);
+                            double atrPct = atr / price;
+                            requiredDrop = config.InitialDropPct * (atrPct / config.ReferenceAtrPct) * config.DropAtrFactor;
+                        }
 
                         if (price > peak * (1 - requiredDrop))
                         {
@@ -848,20 +946,30 @@ namespace cAlgo.Robots
                         : 1.0;
                     double amt = (state.TotalEquity * baseRateRaw) * weight;
 
+                    double allowedAmt = Math.Min(amt, remainingBuyingPower);
+
                     if (!config.UseFractionalShares && price > state.TotalEquity)
                     {
                         continue;
                     }
+                    if (!config.UseFractionalShares && allowedAmt < price)
+                    {
+                        continue;
+                    }
+
+                    double qty = config.UseFractionalShares ? allowedAmt / price : Math.Floor(allowedAmt / price);
+                    if (qty <= 0) continue;
 
                     res.Actions.Add(new TradingAction
                     {
                         Symbol = sym, Type = ActionType.Buy,
-                        Price = price, Amount = amt,
-                        Quantity = config.UseFractionalShares ? amt / price : Math.Ceiling(amt / price),
+                        Price = price, Amount = qty * price,
+                        Quantity = qty,
                         Reason = "Entry1",
                         TrancheIndex = 0
                     });
                     heldSymbols.Add(sym);
+                    remainingBuyingPower -= qty * price;
                 }
             }
 
@@ -869,6 +977,8 @@ namespace cAlgo.Robots
                 state.ActiveOrders.GroupBy(o => o.Symbol).ToDictionary(g => g.Key, g => g.ToList());
             foreach (KeyValuePair<string, List<CrashCatcherOrder>> kvp in activeBySymbol)
             {
+                if (remainingBuyingPower <= 0) break;
+
                 string sym = kvp.Key;
                 if (!idxs.TryGetValue(sym, out int idx)) continue;
                 double price = all[sym][idx].Close;
@@ -893,7 +1003,15 @@ namespace cAlgo.Robots
                         daysSinceLastTranche = (day.Date - lastEntryDate.Date).Days;
                     }
 
-                    bool canDca = price <= lastPrice * (1 - config.GridSpacingPct) &&
+                    double spacing = config.GridSpacingPct;
+                    if (config.UseAtrScaledGrid)
+                    {
+                        double atr = GetAtr(sym, all[sym], idx);
+                        double atrPct = atr / price;
+                        spacing = config.GridSpacingPct * (atrPct / config.ReferenceAtrPct) * config.GridAtrFactor;
+                    }
+
+                    bool canDca = price <= lastPrice * (1 - spacing) &&
                                   topSymbols.Contains(sym) &&
                                   daysSinceLastTranche >= config.MinDaysBetweenTranches;
 
@@ -906,19 +1024,29 @@ namespace cAlgo.Robots
 
                         double amt = (state.TotalEquity * baseRateRaw) * weight;
 
+                        double allowedAmt = Math.Min(amt, remainingBuyingPower);
+
                         if (!config.UseFractionalShares && price > state.TotalEquity)
                         {
                             continue;
                         }
+                        if (!config.UseFractionalShares && allowedAmt < price)
+                        {
+                            continue;
+                        }
+
+                        double qty = config.UseFractionalShares ? allowedAmt / price : Math.Floor(allowedAmt / price);
+                        if (qty <= 0) continue;
 
                         res.Actions.Add(new TradingAction
                         {
                             Symbol = sym, Type = ActionType.Buy,
-                            Price = price, Amount = amt,
-                            Quantity = config.UseFractionalShares ? amt / price : Math.Ceiling(amt / price),
+                            Price = price, Amount = qty * price,
+                            Quantity = qty,
                             Reason = $"DCA{nextTrancheIndex + 1}",
                             TrancheIndex = nextTrancheIndex
                         });
+                        remainingBuyingPower -= qty * price;
                     }
                 }
             }
@@ -1120,6 +1248,9 @@ namespace cAlgo.Robots
 
         [Parameter("Position Label", Group = "Strategy", DefaultValue = "UnicornMstp")]
         public string PositionLabel { get; set; }
+
+        [Parameter("Use FTMO Config", Group = "Strategy", DefaultValue = true)]
+        public bool UseFtmoConfig { get; set; }
 
         [Parameter("Trigger Hour EST (MOC)", Group = "Schedule", DefaultValue = 15)]
         public int TriggerHour { get; set; }
@@ -1410,7 +1541,7 @@ namespace cAlgo.Robots
                     return;
                 }
 
-                CrashCatcherMstpConfiguration config = new CrashCatcherMstpConfiguration();
+                CrashCatcherMstpConfiguration config = UseFtmoConfig ? CrashCatcherMstpConfiguration.GetFtmoConfiguration() : new CrashCatcherMstpConfiguration();
 
                 // 2. Load universe and sector maps
                 Print("[UnicornTrading cTrader] Loading universe history and sector map from MongoDB...");
