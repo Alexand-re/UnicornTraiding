@@ -1459,14 +1459,38 @@ namespace cAlgo.Robots
                         {
                             try
                             {
-                                foreach (var position in Positions)
+                                // FIX: on prend un snapshot des positions (FindAll retourne un tableau,
+                                // pas une référence live) pour éviter de modifier la collection
+                                // pendant qu'on l'itère avec ClosePosition().
+                                var positionsToClose = Positions.FindAll(PositionLabel);
+
+                                if (positionsToClose.Length == 0)
                                 {
-                                    if (string.Equals(position.Label, PositionLabel, StringComparison.OrdinalIgnoreCase))
+                                    Print("[cTrader Watcher EMERGENCY] Aucune position à fermer pour ce label.");
+                                }
+
+                                int closedCount = 0;
+                                int failedCount = 0;
+
+                                foreach (var position in positionsToClose)
+                                {
+                                    Print(string.Format("[cTrader Watcher EMERGENCY] Closing position {0} ({1})", position.Id, position.SymbolName));
+
+                                    var closeRes = ClosePosition(position);
+                                    if (closeRes.IsSuccessful)
                                     {
-                                        Print(string.Format("[cTrader Watcher EMERGENCY] Closing position {0} ({1})", position.Id, position.SymbolName));
-                                        ClosePosition(position);
+                                        closedCount++;
+                                    }
+                                    else
+                                    {
+                                        failedCount++;
+                                        Print(string.Format("[cTrader Watcher EMERGENCY] ECHEC fermeture position {0} ({1}): {2}",
+                                            position.Id, position.SymbolName, closeRes.Error));
                                     }
                                 }
+
+                                Print(string.Format("[cTrader Watcher EMERGENCY] Liquidation terminée. Fermées: {0}/{1}. Echecs: {2}.",
+                                    closedCount, positionsToClose.Length, failedCount));
 
                                 if (latestState != null)
                                 {
@@ -1490,7 +1514,7 @@ namespace cAlgo.Robots
                 Print("[cTrader Watcher] Error during intraday risk check: " + ex.Message);
             }
         }
-
+                
         private string GetBrokerSymbol(string standardSymbol)
         {
             // Special resolution for SPY (S&P 500 Index)
