@@ -55,6 +55,8 @@ namespace cAlgo.Robots
         public double SlippagePct { get; set; } = 0.00025;
         public double MaintenanceMarginPct { get; set; } = 0.30;
         public bool UseFractionalShares { get; set; } = true;
+        public double DailyDrawdownLimitPct { get; set; } = 0.0;
+        public int DailyLossFreezeDays { get; set; } = 1;
 
         public static CrashCatcherMstpConfiguration GetFtmoConfiguration()
         {
@@ -63,41 +65,43 @@ namespace cAlgo.Robots
                 UniverseSize = 4,
                 InitialDropPct = 0.02935121389541366,
                 UseAtrScaledDrop = false,
-                DropAtrFactor = 1.4745249118537291,
-                ReferenceAtrPct = 0.008268527026878915,
-                MaxCorrelationThreshold = 0.8222779869438512,
+                DropAtrFactor = 0.3754719669350758,
+                ReferenceAtrPct = 0.01,
+                MaxCorrelationThreshold = 0.8235672231407685,
                 CorrelationLookback = 10,
                 SystemicCrashThreshold = 0.5701078946330156,
-                SystemicMomentumFactor = 0.4408433402613007,
-                MomentumLookback = 5,
+                SystemicMomentumFactor = 0.7056141809120839,
+                MomentumLookback = 16,
                 WindowSize = 10,
-                GridSpacingPct = 0.011499979506013905,
+                GridSpacingPct = 0.011372330608485422,
                 UseAtrScaledGrid = true,
-                GridAtrFactor = 0.30492350349897684,
+                GridAtrFactor = 0.3600171219604169,
                 ScalingRatio = 4.869340749396636,
-                UseNormalizedLeverage = false,
+                UseNormalizedLeverage = true,
                 MaxTranchesPerSymbol = 2,
                 MinDaysBetweenTranches = 2,
                 SlBasedOnFirstTranche = true,
                 TrancheWeights = null,
-                SymbolStopLossPct = 0.4028039183946345,
+                SymbolStopLossPct = 0.3363043605519013,
                 TrailingStopPct = 0.30647875783335354,
                 AtrTrailingStopMultiplier = 8.729303828780214,
-                TargetProfitFinalPct = 0.08670601305165608,
+                TargetProfitFinalPct = 0.06373977958166031,
                 Stages = new List<TakeProfitStage>
                 {
                     new TakeProfitStage { ProfitThresholdPct = 0.015474284270716477, SellRatio = 0.2388255434737977 },
                     new TakeProfitStage { ProfitThresholdPct = 0.04136917216779146, SellRatio = 0.2039360993552324 },
                     new TakeProfitStage { ProfitThresholdPct = 0.053253583107269235, SellRatio = 0.15756063341087556 }
                 },
-                TsMode = TrailingStopMode.IndividualTranche,
+                TsMode = TrailingStopMode.None,
                 ExitTrancheAtStageThreshold = true,
                 LeverageMultiplier = 1.0,
                 MaxLeverageLimit = 1.0,
                 RecoveryLeverageMultiplier = 1.0,
-                RecoveryDurationDays = 26,
-                CircuitBreakerPct = 0.9034130913174773,
-                TrailingEquityStopPct = 0.1,
+                RecoveryDurationDays = 51,
+                CircuitBreakerPct = 0.9,
+                TrailingEquityStopPct = 0.09779020715867645,
+                DailyDrawdownLimitPct = 0.045, // Fixé à 4.5% pour FTMO
+                DailyLossFreezeDays = 1,
                 VolatilityTarget = 0.0114,
                 VolatilityMinMultiplier = 1.0,
                 UseRegimeFilter = true,
@@ -159,6 +163,7 @@ namespace cAlgo.Robots
         public int SellActionsToday { get; set; }
         public bool SystemicCrashActive { get; set; }
         public int RecoveryDaysRemaining { get; set; }
+        public int DailyLossFreezeDaysRemaining { get; set; }
         public int DaysSinceLastCrash { get; set; }
         public double RealizedEquity { get; set; }
         public double CumulativeCashInterest { get; set; }
@@ -1382,6 +1387,9 @@ namespace cAlgo.Robots
                     return;
                 }
 
+                // Watcher Intraday (exécuté sur OnTimer chaque minute)
+                CheckIntradayRiskWatcher();
+
                 // Trigger MOC logic (typically 15:50 EST)
                 if (!_mocProcessedForToday && nowEst.Hour == TriggerHour && nowEst.Minute >= TriggerMinute && nowEst.Minute < TriggerMinute + 8)
                 {
@@ -1405,6 +1413,81 @@ namespace cAlgo.Robots
             catch (Exception ex)
             {
                 Print("[UnicornTrading cTrader] Scheduler Error: " + ex.Message);
+            }
+        }
+
+        private void CheckIntradayRiskWatcher()
+        {
+            try
+            {
+                CrashCatcherMstpConfiguration config = UseFtmoConfig ? CrashCatcherMstpConfiguration.GetFtmoConfiguration() : new CrashCatcherMstpConfiguration();
+
+                if (config.DailyDrawdownLimitPct <= 0 && config.TrailingEquityStopPct <= 0 && config.CircuitBreakerPct <= 0)
+                {
+                    return;
+                }
+
+                double currentEquity = Account.Equity;
+                if (currentEquity <= 0) return;
+
+                CrashCatcherDailyState latestState = GetLatestState();
+                double referenceEquity = latestState?.TotalEquity ?? currentEquity;
+                if (referenceEquity <= 0) referenceEquity = currentEquity;
+
+                double dailyChangePct = (currentEquity - referenceEquity) / referenceEquity;
+                double currentDropPct = -dailyChangePct; // Positif en cas de perte
+
+                double thresholdPct = config.DailyDrawdownLimitPct;
+
+                if (thresholdPct > 0)
+                {
+                    double distanceToThresholdPct = (thresholdPct - currentDropPct) * 100;
+                    string statusMsg = currentDropPct >= 0 
+                        ? string.Format("Perte Intraday: -{0:F2}%", currentDropPct * 100) 
+                        : string.Format("Gain Intraday: +{0:F2}%", -currentDropPct * 100);
+
+                    Print(string.Format("[cTrader Watcher] Equity: {0:N2} | {1} | Seuil Max: -{2:F2}% | Marge restante: {3:F2}%", 
+                        currentEquity, statusMsg, thresholdPct * 100, distanceToThresholdPct));
+
+                    // Liquidation forcée en cas de dépassement du seuil
+                    if (currentDropPct >= thresholdPct)
+                    {
+                        Print(string.Format("[cTrader Watcher EMERGENCY] Intraday Loss (-{0:F2}%) exceeded limit (-{1:F2}%)! Executing EMERGENCY LIQUIDATION.", 
+                            currentDropPct * 100, thresholdPct * 100));
+
+                        BeginInvokeOnMainThread(() =>
+                        {
+                            try
+                            {
+                                foreach (var position in Positions)
+                                {
+                                    if (string.Equals(position.Label, PositionLabel, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        Print(string.Format("[cTrader Watcher EMERGENCY] Closing position {0} ({1})", position.Id, position.SymbolName));
+                                        ClosePosition(position);
+                                    }
+                                }
+
+                                if (latestState != null)
+                                {
+                                    latestState.DailyLossFreezeDaysRemaining = Math.Max(1, config.DailyLossFreezeDays);
+                                    latestState.ActiveOrders.Clear();
+                                    latestState.Cash = currentEquity;
+                                    latestState.TotalEquity = currentEquity;
+                                    SaveState(latestState);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Print("[cTrader Watcher EMERGENCY] Error during liquidation: " + ex.Message);
+                            }
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Print("[cTrader Watcher] Error during intraday risk check: " + ex.Message);
             }
         }
 
