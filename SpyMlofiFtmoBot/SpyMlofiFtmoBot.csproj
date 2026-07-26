@@ -7,7 +7,6 @@
 
   <ItemGroup>
     <PackageReference Include="cTrader.Automate" Version="*" />
-    <PackageReference Include="MongoDB.Driver" Version="2.25.0" />
     <PackageReference Include="Microsoft.ML" Version="3.0.1" />
     <PackageReference Include="Microsoft.ML.FastTree" Version="3.0.1" />
   </ItemGroup>
