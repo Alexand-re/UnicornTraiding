@@ -2134,12 +2134,65 @@ namespace cAlgo.Robots
             return barsCache;
         }
 
+        private bool VerifyAlpacaConnection()
+        {
+            Print("[Alpaca Verification] Testing Alpaca API connection...");
+
+            if (string.IsNullOrWhiteSpace(AlpacaKeyId) || string.IsNullOrWhiteSpace(AlpacaSecretKey))
+            {
+                Print("[Alpaca Verification] FAILED: Alpaca Key ID or Secret Key is not configured in cBot parameters!");
+                return false;
+            }
+
+            try
+            {
+                using var httpClient = new HttpClient();
+                httpClient.DefaultRequestHeaders.Add("APCA-API-KEY-ID", AlpacaKeyId.Trim());
+                httpClient.DefaultRequestHeaders.Add("APCA-API-SECRET-KEY", AlpacaSecretKey.Trim());
+
+                string baseUrl = string.IsNullOrWhiteSpace(AlpacaDataUrl) ? "https://data.alpaca.markets/v2/" : AlpacaDataUrl.Trim();
+                if (!baseUrl.EndsWith("/")) baseUrl += "/";
+
+                string feed = string.IsNullOrWhiteSpace(AlpacaFeed) ? "sip" : AlpacaFeed.Trim();
+                string testUrl = $"{baseUrl}stocks/bars?symbols=SPY&timeframe=1Day&limit=1&feed={feed}";
+
+                var response = httpClient.GetAsync(testUrl).GetAwaiter().GetResult();
+                string maskedKey = AlpacaKeyId.Trim().Length > 6
+                    ? AlpacaKeyId.Trim().Substring(0, 4) + "..." + AlpacaKeyId.Trim().Substring(AlpacaKeyId.Trim().Length - 2)
+                    : "***";
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Print($"[Alpaca Verification] SUCCESS: Connected to Alpaca Data API! (Key: {maskedKey}, Feed: {feed}, Status: 200 OK)");
+                    return true;
+                }
+                else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized || response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                {
+                    Print($"[Alpaca Verification] FAILED: Invalid credentials (HTTP {(int)response.StatusCode} {response.ReasonPhrase}). Please check Key ID and Secret Key.");
+                    return false;
+                }
+                else
+                {
+                    Print($"[Alpaca Verification] WARNING: HTTP {(int)response.StatusCode} {response.ReasonPhrase} testing Alpaca connection.");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                Print($"[Alpaca Verification] FAILED: Exception connecting to Alpaca API: {ex.Message}");
+                return false;
+            }
+        }
+
         private void PerformStartupVerification()
         {
             Print("[UnicornTrading cTrader] Performing startup verification checks...");
 
             try
             {
+                // Verify Alpaca API connection
+                VerifyAlpacaConnection();
+
                 if (_database == null)
                 {
                     Print("[Verification] FAILED: MongoDB database is not initialized.");
