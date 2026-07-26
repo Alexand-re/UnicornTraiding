@@ -1,3 +1,8 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
+using System.Text.Json;
 using cAlgo.API;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
@@ -13,27 +18,27 @@ namespace cAlgo.Robots
         public int UniverseSize { get; set; } = 4;
         public double InitialDropPct { get; set; } = 0.02935121389541366;
         public bool UseAtrScaledDrop { get; set; } = false;
-        public double DropAtrFactor { get; set; } = 1.4745249118537291;
-        public double ReferenceAtrPct { get; set; } = 0.01;
-        public double MaxCorrelationThreshold { get; set; } = 0.8189537877538027;
+        public double DropAtrFactor { get; set; } = 0.919936977429286;
+        public double ReferenceAtrPct { get; set; } = 0.00771423086650401;
+        public double MaxCorrelationThreshold { get; set; } = 0.8208337189726689;
         public int CorrelationLookback { get; set; } = 10;
-        public double SystemicCrashThreshold { get; set; } = 0.5701078946330156;
-        public double SystemicMomentumFactor { get; set; } = 0.4408433402613007;
-        public int MomentumLookback { get; set; } = 5;
+        public double SystemicCrashThreshold { get; set; } = 0.8222295446890544;
+        public double SystemicMomentumFactor { get; set; } = 0.6414465306985409;
+        public int MomentumLookback { get; set; } = 12;
         public int WindowSize { get; set; } = 10;
-        public double GridSpacingPct { get; set; } = 0.011499979506013905;
+        public double GridSpacingPct { get; set; } = 0.01384274580694863;
         public bool UseAtrScaledGrid { get; set; } = true;
-        public double GridAtrFactor { get; set; } = 0.30492350349897684;
-        public double ScalingRatio { get; set; } = 4.869340749396636;
+        public double GridAtrFactor { get; set; } = 0.25341375337606936;
+        public double ScalingRatio { get; set; } = 4.952039750270564;
         public bool UseNormalizedLeverage { get; set; } = true;
         public int MaxTranchesPerSymbol { get; set; } = 2;
         public int MinDaysBetweenTranches { get; set; } = 2;
-        public bool SlBasedOnFirstTranche { get; set; } = true;
+        public bool SlBasedOnFirstTranche { get; set; } = false;
         public List<double>? TrancheWeights { get; set; } = null;
-        public double SymbolStopLossPct { get; set; } = 0.45813735488715457;
-        public double TrailingStopPct { get; set; } = 0.30647875783335354;
-        public double AtrTrailingStopMultiplier { get; set; } = 8.729303828780214;
-        public double TargetProfitFinalPct { get; set; } = 0.09015617075849146;
+        public double SymbolStopLossPct { get; set; } = 0.5490085718915838;
+        public double TrailingStopPct { get; set; } = 0.22811442843084895;
+        public double AtrTrailingStopMultiplier { get; set; } = 9.310419767773904;
+        public double TargetProfitFinalPct { get; set; } = 0.013290116364737096;
         public List<TakeProfitStage> Stages { get; set; } = new()
         {
             new TakeProfitStage {ProfitThresholdPct = 0.015474284270716477, SellRatio = 0.2388255434737977},
@@ -42,21 +47,33 @@ namespace cAlgo.Robots
         };
         public TrailingStopMode TsMode { get; set; } = TrailingStopMode.AllPosition;
         public bool ExitTrancheAtStageThreshold { get; set; } = true;
-        public double LeverageMultiplier { get; set; } = 4.0;
-        public double MaxLeverageLimit { get; set; } = 3.6;
-        public double RecoveryLeverageMultiplier { get; set; } = 0.26615483312222865;
-        public int RecoveryDurationDays { get; set; } = 22;
-        public double CircuitBreakerPct { get; set; } = 0.7;
-        public double TrailingEquityStopPct { get; set; } = 0.30000000000000004;
+        public double LeverageMultiplier { get; set; } = 2.0;
+        public double MaxSymbolCapitalExposurePct { get; set; } = 0.68;
+        public double MaxLeverageLimit { get; set; } = 3.07;
+        public double RecoveryLeverageMultiplier { get; set; } = 0.4247;
+        public int RecoveryDurationDays { get; set; } = 15;
+        public double CircuitBreakerPct { get; set; } = 0.7777977636073705;
+        public double TrailingEquityStopPct { get; set; } = 0.18916648692878266;
         public double VolatilityTarget { get; set; } = 0.0114;
         public double VolatilityMinMultiplier { get; set; } = 1.0;
-        public bool UseRegimeFilter { get; set; } = true;
+        public bool UseRegimeFilter { get; set; } = false;
         public bool DisableRotationExit { get; set; } = true;
         public double SlippagePct { get; set; } = 0.00025;
         public double MaintenanceMarginPct { get; set; } = 0.30;
-        public bool UseFractionalShares { get; set; } = true;
         public double DailyDrawdownLimitPct { get; set; } = 0.0;
         public int DailyLossFreezeDays { get; set; } = 1;
+        public bool UseFractionalShares { get; set; } = true;
+
+        public bool UseTrendRegimeSpacing { get; set; } = true;
+        public double TrendRegimeSpacingFactor { get; set; } = 0.9182134167841698;
+        public int TrendRegimePeriod { get; set; } = 57;
+        public bool UseMarketPanicSpacing { get; set; } = false;
+        public double MarketPanicSpacingFactor { get; set; } = 1.5;
+        public bool UseProgressiveGrid { get; set; } = false;
+        public double ProgressiveGridFactor { get; set; } = 0.6274374381301168;
+        public bool UseDynamicMaxTranches { get; set; } = false;
+        public int HighVolMaxTranches { get; set; } = 4;
+        public double HighVolThresholdPct { get; set; } = 0.025;
 
         public static CrashCatcherMstpConfiguration GetFtmoConfiguration()
         {
@@ -108,7 +125,17 @@ namespace cAlgo.Robots
                 DisableRotationExit = true,
                 SlippagePct = 0.00025,
                 MaintenanceMarginPct = 0.3,
-                UseFractionalShares = true
+                UseFractionalShares = true,
+                UseTrendRegimeSpacing = true,
+                TrendRegimeSpacingFactor = 0.8046428518391414,
+                TrendRegimePeriod = 73,
+                UseMarketPanicSpacing = true,
+                MarketPanicSpacingFactor = 1.7436839471308905,
+                UseProgressiveGrid = true,
+                ProgressiveGridFactor = 0.5,
+                UseDynamicMaxTranches = false,
+                HighVolMaxTranches = 5,
+                HighVolThresholdPct = 0.023228774468055356
             };
         }
     }
@@ -1272,6 +1299,18 @@ namespace cAlgo.Robots
         [Parameter("SPY Symbol Override", Group = "Broker Settings", DefaultValue = "SPY")]
         public string SpySymbolOverride { get; set; }
 
+        [Parameter("Alpaca Key ID", Group = "Alpaca API", DefaultValue = "")]
+        public string AlpacaKeyId { get; set; }
+
+        [Parameter("Alpaca Secret Key", Group = "Alpaca API", DefaultValue = "")]
+        public string AlpacaSecretKey { get; set; }
+
+        [Parameter("Alpaca Data URL", Group = "Alpaca API", DefaultValue = "https://data.alpaca.markets/v2/")]
+        public string AlpacaDataUrl { get; set; }
+
+        [Parameter("Alpaca Feed", Group = "Alpaca API", DefaultValue = "sip")]
+        public string AlpacaFeed { get; set; }
+
         private IMongoDatabase _database;
         private IMongoCollection<BsonDocument> _universeHistoryCollection;
         private IMongoCollection<BsonDocument> _assetInfoCollection;
@@ -1687,35 +1726,9 @@ namespace cAlgo.Robots
                     symbolsToFetch.Add(o.Symbol);
                 }
 
-                // 4. Fetch daily bars from cTrader
-                Print($"[UnicornTrading cTrader] Loading historical bars for {symbolsToFetch.Count} symbols from cTrader...");
-                var barsCache = new Dictionary<string, List<Bars>>();
-                foreach (var standardSym in symbolsToFetch)
-                {
-                    string brokerSym = GetBrokerSymbol(standardSym);
-                    if (!_availableBrokerSymbols.Contains(brokerSym)) continue;
-                    var symbolInfo = Symbols.GetSymbol(brokerSym);
-                    if (symbolInfo == null) continue;
-
-                    var ctraderBars = MarketData.GetBars(TimeFrame.Daily, brokerSym);
-                    if (ctraderBars == null || ctraderBars.Count == 0) continue;
-
-                    var localBarsList = new List<Bars>();
-                    int startIdx = Math.Max(0, ctraderBars.Count - 500);
-                    for (int i = startIdx; i < ctraderBars.Count; i++)
-                    {
-                        localBarsList.Add(new Bars
-                        {
-                            Timestamp = DateTime.SpecifyKind(ctraderBars.OpenTimes[i].Date, DateTimeKind.Utc),
-                            Open = ctraderBars.OpenPrices[i],
-                            High = ctraderBars.HighPrices[i],
-                            Low = ctraderBars.LowPrices[i],
-                            Close = ctraderBars.ClosePrices[i],
-                            Volume = (long)ctraderBars.TickVolumes[i]
-                        });
-                    }
-                    barsCache[standardSym] = localBarsList;
-                }
+                // 4. Fetch daily bars (from Alpaca API with cTrader fallback for broker-supported symbols)
+                Print($"[UnicornTrading] Fetching historical daily bars for {symbolsToFetch.Count} candidate symbols...");
+                var barsCache = FetchBarsForSymbols(symbolsToFetch);
 
                 if (!barsCache.ContainsKey("SPY"))
                 {
@@ -1912,7 +1925,7 @@ namespace cAlgo.Robots
                     }
                 }
 
-                // 9. Execute Buys
+                // 9. Execute Buys (Calculated using Alpaca real-time / latest daily price)
                 var buyActions = dayRes.Actions.Where(a => a.Type == CrashCatcherMstpEngine.ActionType.Buy).ToList();
                 foreach (var action in buyActions)
                 {
@@ -1931,7 +1944,20 @@ namespace cAlgo.Robots
                             continue;
                         }
 
-                        double qty = action.Amount / action.Price;
+                        // S'assurer que le prix utilisé est le dernier prix de clôture Alpaca disponible
+                        double alpacaPrice = action.Price;
+                        if (barsCache.TryGetValue(action.Symbol, out var symbolBars) && symbolBars.Count > 0)
+                        {
+                            alpacaPrice = symbolBars.Last().Close;
+                        }
+
+                        if (alpacaPrice <= 0)
+                        {
+                            Print($"[UnicornTrading Buy] Skipping {action.Symbol}: invalid Alpaca price {alpacaPrice}");
+                            continue;
+                        }
+
+                        double qty = action.Amount / alpacaPrice;
                         double volume = symbolInfo.NormalizeVolumeInUnits(qty, RoundingMode.ToNearest);
 
                         if (volume < symbolInfo.VolumeInUnitsMin)
@@ -1941,14 +1967,15 @@ namespace cAlgo.Robots
                             continue;
                         }
 
-                        Print(string.Format("[UnicornTrading Buy] Opening BUY order for {0} (Volume: {1} @ {2})",
-                            action.Symbol, volume, action.Price));
+                        Print(string.Format("[UnicornTrading Buy] Opening BUY order for {0} (Volume: {1} @ Alpaca Price: {2:F2})",
+                            action.Symbol, volume, alpacaPrice));
 
                         var buyRes = ExecuteMarketOrder(TradeType.Buy, brokerSym, volume, PositionLabel);
                         if (buyRes.IsSuccessful)
                         {
                             action.Quantity = volume;
-                            action.Amount = volume * action.Price;
+                            action.Price = alpacaPrice;
+                            action.Amount = volume * alpacaPrice;
                             executedActions.Add(action);
                         }
                         else
@@ -1998,6 +2025,113 @@ namespace cAlgo.Robots
             state.UpdatedAt = DateTime.UtcNow;
             var filter = Builders<CrashCatcherDailyState>.Filter.Eq(s => s.Id, state.Id);
             _stateCollection.ReplaceOne(filter, state, new ReplaceOptions { IsUpsert = true });
+        }
+
+        private Dictionary<string, List<Bars>> FetchBarsForSymbols(IEnumerable<string> standardSymbols)
+        {
+            var barsCache = new Dictionary<string, List<Bars>>();
+
+            // Seuls les symboles disponibles sur le courtier cTrader sont conservés
+            var validStandardSymbols = new List<string>();
+            foreach (var sym in standardSymbols.Distinct())
+            {
+                string brokerSym = GetBrokerSymbol(sym);
+                if (_availableBrokerSymbols.Contains(brokerSym))
+                {
+                    validStandardSymbols.Add(sym);
+                }
+                else
+                {
+                    Print($"[UnicornTrading] Symbol '{sym}' (resolved to '{brokerSym}') is not available on cTrader broker. Skipping.");
+                }
+            }
+
+            if (validStandardSymbols.Count == 0)
+            {
+                return barsCache;
+            }
+
+            // 1. Charger 100% des barres quotidiennes depuis l'API Alpaca pour les symboles valides chez le courtier
+            if (string.IsNullOrWhiteSpace(AlpacaKeyId) || string.IsNullOrWhiteSpace(AlpacaSecretKey))
+            {
+                Print("[UnicornTrading Alpaca] ERROR: Alpaca Key ID and Secret Key must be configured. Aborting bar retrieval.");
+                return barsCache;
+            }
+
+            try
+            {
+                Print($"[UnicornTrading Alpaca] Fetching daily bars for {validStandardSymbols.Count} symbols exclusively from Alpaca API...");
+
+                using var httpClient = new HttpClient();
+                httpClient.DefaultRequestHeaders.Add("APCA-API-KEY-ID", AlpacaKeyId);
+                httpClient.DefaultRequestHeaders.Add("APCA-API-SECRET-KEY", AlpacaSecretKey);
+
+                string baseUrl = string.IsNullOrWhiteSpace(AlpacaDataUrl) ? "https://data.alpaca.markets/v2/" : AlpacaDataUrl;
+                if (!baseUrl.EndsWith("/")) baseUrl += "/";
+
+                string feed = string.IsNullOrWhiteSpace(AlpacaFeed) ? "sip" : AlpacaFeed;
+
+                int batchSize = 100;
+                for (int i = 0; i < validStandardSymbols.Count; i += batchSize)
+                {
+                    var batch = validStandardSymbols.Skip(i).Take(batchSize).ToList();
+                    string joinedSymbols = string.Join(",", batch);
+                    string url = $"{baseUrl}stocks/bars?symbols={joinedSymbols}&timeframe=1Day&limit=10000&feed={feed}&adjustment=all";
+
+                    var response = httpClient.GetAsync(url).GetAwaiter().GetResult();
+                    if (response.IsSuccessStatusCode)
+                    {
+                        string json = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                        using var doc = JsonDocument.Parse(json);
+                        if (doc.RootElement.TryGetProperty("bars", out var barsProp) && barsProp.ValueKind == JsonValueKind.Object)
+                        {
+                            foreach (var symProp in barsProp.EnumerateObject())
+                            {
+                                string sym = symProp.Name;
+                                var barsArray = symProp.Value;
+                                var localBarsList = new List<Bars>();
+
+                                foreach (var b in barsArray.EnumerateArray())
+                                {
+                                    DateTime t = DateTime.SpecifyKind(b.GetProperty("t").GetDateTime(), DateTimeKind.Utc);
+                                    double o = b.GetProperty("o").GetDouble();
+                                    double h = b.GetProperty("h").GetDouble();
+                                    double l = b.GetProperty("l").GetDouble();
+                                    double c = b.GetProperty("c").GetDouble();
+                                    long v = b.GetProperty("v").GetInt64();
+
+                                    localBarsList.Add(new Bars
+                                    {
+                                        Timestamp = t,
+                                        Open = o,
+                                        High = h,
+                                        Low = l,
+                                        Close = c,
+                                        Volume = v
+                                    });
+                                }
+
+                                if (localBarsList.Count > 0)
+                                {
+                                    barsCache[sym] = localBarsList;
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        Print($"[UnicornTrading Alpaca] HTTP {(int)response.StatusCode} error fetching bars: {response.ReasonPhrase}");
+                    }
+                }
+
+                Print($"[UnicornTrading Alpaca] Successfully fetched daily bars for {barsCache.Count}/{validStandardSymbols.Count} symbols exclusively from Alpaca API.");
+            }
+            catch (Exception ex)
+            {
+                Print($"[UnicornTrading Alpaca] Exception fetching bars from Alpaca API: {ex.Message}");
+            }
+
+            return barsCache;
         }
 
         private void PerformStartupVerification()
@@ -2057,7 +2191,8 @@ namespace cAlgo.Robots
                     Print("[Verification] WARNING: Could not fetch latest universe history from MongoDB: " + ex.Message);
                 }
 
-                Print($"[Verification] Testing broker access for {symbolsToTest.Count} symbols...");
+                Print($"[Verification] Testing bar data retrieval for {symbolsToTest.Count} symbols...");
+                var testBars = FetchBarsForSymbols(symbolsToTest);
 
                 int successes = 0;
                 int failures = 0;
@@ -2067,29 +2202,20 @@ namespace cAlgo.Robots
                     string brokerSym = GetBrokerSymbol(standardSym);
                     if (!_availableBrokerSymbols.Contains(brokerSym))
                     {
-                        Print($"[Verification] ERROR: Symbol '{standardSym}' (resolved to '{brokerSym}') is NOT supported by broker.");
-                        failures++;
-                        continue;
-                    }
-                    var symbolInfo = Symbols.GetSymbol(brokerSym);
-
-                    if (symbolInfo == null)
-                    {
-                        Print($"[Verification] ERROR: Symbol '{standardSym}' (resolved to '{brokerSym}') failed to load.");
+                        Print($"[Verification] ERROR: Symbol '{standardSym}' (resolved to '{brokerSym}') is NOT supported by cTrader broker.");
                         failures++;
                         continue;
                     }
 
-                    var ctraderBars = MarketData.GetBars(TimeFrame.Daily, brokerSym);
-                    if (ctraderBars == null || ctraderBars.Count == 0)
+                    if (testBars.TryGetValue(standardSym, out var bars) && bars.Count > 0)
                     {
-                        Print($"[Verification] ERROR: Found '{brokerSym}' but failed to fetch historical daily bars.");
-                        failures++;
+                        Print($"[Verification] SUCCESS: '{standardSym}' mapped to '{brokerSym}' (Daily Bars: {bars.Count}, Last Close: {bars.Last().Close})");
+                        successes++;
                     }
                     else
                     {
-                        Print($"[Verification] SUCCESS: '{standardSym}' mapped to '{brokerSym}' (Bid: {symbolInfo.Bid}, Daily Bars: {ctraderBars.Count})");
-                        successes++;
+                        Print($"[Verification] ERROR: Failed to fetch daily bars for '{standardSym}' (mapped to '{brokerSym}').");
+                        failures++;
                     }
                 }
 
