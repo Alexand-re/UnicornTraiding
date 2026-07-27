@@ -298,7 +298,9 @@ namespace cAlgo.Robots
 
                 double range = Math.Max(bar.High - bar.Low, 0.01);
                 double closePos = (closePrice - bar.Low) / range;
-                double mlofiScore = (bar.TickVolume > 0) ? ((bar.TickVolume * (1.0 - closePos)) - (bar.TickVolume * closePos)) / bar.TickVolume : 0.0;
+                double buyVol = bar.TickVolume * closePos;
+                double sellVol = bar.TickVolume * (1.0 - closePos);
+                double mlofiScore = (buyVol + sellVol > 0) ? (buyVol - sellVol) / (buyVol + sellVol) : 0.0;
 
                 double sum20 = 0, sum50 = 0, sumVol = 0;
                 for (int k = 0; k < 50; k++)
@@ -393,8 +395,8 @@ namespace cAlgo.Robots
             // Calcul MLOFI Score synthétique
             double range = Math.Max(bar.High - bar.Low, 0.01);
             double closePos = (currentPrice - bar.Low) / range;
-            double buyVol = bar.TickVolume * (1.0 - closePos);
-            double sellVol = bar.TickVolume * closePos;
+            double buyVol = bar.TickVolume * closePos;
+            double sellVol = bar.TickVolume * (1.0 - closePos);
             double mlofiScore = (buyVol + sellVol > 0) ? (buyVol - sellVol) / (buyVol + sellVol) : 0.0;
 
             // Technicals
