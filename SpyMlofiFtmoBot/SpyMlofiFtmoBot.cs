@@ -465,14 +465,15 @@ namespace cAlgo.Robots
 
             double currentPrice;
             double mlofiScore;
-            double ema20, ema50, avgVolume, rsi14, atr1m;
+            double ema20, ema50, avgVolume, rsi14, atr1m, currentBarVolume;
             bool isVolumeSpike;
 
             if (usingAlpacaLive)
             {
-                int idx = liveBars.Count - 1;
+                int idx = liveBars.Count >= 2 ? liveBars.Count - 2 : liveBars.Count - 1;
                 var bar = liveBars[idx];
                 currentPrice = bar.Close;
+                currentBarVolume = bar.TickVolume;
 
                 double range = Math.Max(bar.High - bar.Low, 0.01);
                 double closePos = (currentPrice - bar.Low) / range;
@@ -520,6 +521,7 @@ namespace cAlgo.Robots
 
                 var bar = bars1m[idx];
                 currentPrice = bar.Close;
+                currentBarVolume = bar.TickVolume;
 
                 double range = Math.Max(bar.High - bar.Low, 0.01);
                 double closePos = (currentPrice - bar.Low) / range;
@@ -563,7 +565,7 @@ namespace cAlgo.Robots
             bool isBuySetup = currentPrice > ema20 && mlofiScore >= MlofiThreshold && isVolumeSpike;
             bool isSellSetup = currentPrice < ema20 && mlofiScore <= -MlofiThreshold && isVolumeSpike;
 
-            double volRatio = avgVolume > 0 ? (usingAlpacaLive ? (liveBars[liveBars.Count - 1].TickVolume / avgVolume) : (MarketData.GetBars(TimeFrame.Minute).LastBar.TickVolume / avgVolume)) : 1.0;
+            double volRatio = avgVolume > 0 ? (currentBarVolume / avgVolume) : 1.0;
 
             string blockReason = "";
             if (!isBuySetup && !isSellSetup)
