@@ -165,6 +165,9 @@ namespace cAlgo.Robots
         [Parameter("Risque Par Trade (%)", Group = "2. Risk Management FTMO", DefaultValue = 0.30)]
         public double RiskPerTradePct { get; set; } = 0.30;
 
+        [Parameter("Max Positions Simultanées", Group = "2. Risk Management FTMO", DefaultValue = 4)]
+        public int MaxConcurrentTrades { get; set; } = 4;
+
         [Parameter("Disjoncteur Jour FTMO (%)", Group = "2. Risk Management FTMO", DefaultValue = 2.5)]
         public double MaxDailyLossPct { get; set; } = 2.5;
 
@@ -174,8 +177,8 @@ namespace cAlgo.Robots
         [Parameter("Seuil MLOFI Score", Group = "1. Target Setup", DefaultValue = 0.25)]
         public double MlofiThreshold { get; set; } = 0.25;
 
-        [Parameter("Multiplicateur StopLoss (x ATR)", Group = "3. Bracket Orders", DefaultValue = 0.8)]
-        public double SlAtrMultiplier { get; set; } = 0.8;
+        [Parameter("Multiplicateur StopLoss (x ATR)", Group = "3. Bracket Orders", DefaultValue = 0.6)]
+        public double SlAtrMultiplier { get; set; } = 0.6;
 
         [Parameter("Multiplicateur TakeProfit (x ATR)", Group = "3. Bracket Orders", DefaultValue = 1.6)]
         public double TpAtrMultiplier { get; set; } = 1.6;
@@ -465,7 +468,7 @@ namespace cAlgo.Robots
 
             ManageBreakEven();
 
-            if (Positions.FindAll("MlofiFtmo").Length > 0) return;
+            if (Positions.FindAll("MlofiFtmo").Length >= MaxConcurrentTrades) return;
 
             // Récupérer les données SPY réelles en direct via Alpaca si configuré
             List<SimpleBar> liveBars = FetchLiveSpyBars();
