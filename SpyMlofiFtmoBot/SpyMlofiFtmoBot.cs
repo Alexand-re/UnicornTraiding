@@ -454,6 +454,19 @@ namespace cAlgo.Robots
                 return;
             }
 
+            // 2. Clôture automatique de fin de journée FTMO (à 21h45 Paris / 15h45 EST) pour éviter tout risque Overnight
+            TimeSpan timeOfDay = Server.Time.TimeOfDay;
+            if (timeOfDay >= new TimeSpan(21, 45, 0) || timeOfDay < new TimeSpan(15, 30, 0))
+            {
+                var activePositions = Positions.FindAll("MlofiFtmo");
+                foreach (var pos in activePositions)
+                {
+                    ClosePosition(pos);
+                    Print($"🌙 CLÔTURE DE FIN DE JOURNÉE FTMO : Position #{pos.Id} fermée à {timeOfDay:hh\\:mm} pour éviter le risque Overnight.");
+                }
+                if (timeOfDay >= new TimeSpan(21, 45, 0) || timeOfDay < new TimeSpan(15, 30, 0)) return;
+            }
+
             // Gestion Break-Even sur les positions ouvertes
             ManageBreakEven();
 

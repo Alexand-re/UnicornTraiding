@@ -451,6 +451,18 @@ namespace cAlgo.Robots
                 return;
             }
 
+            TimeSpan timeOfDay = Server.Time.TimeOfDay;
+            if (timeOfDay >= new TimeSpan(21, 45, 0) || timeOfDay < new TimeSpan(15, 30, 0))
+            {
+                var activePositions = Positions.FindAll("MlofiFtmo");
+                foreach (var pos in activePositions)
+                {
+                    ClosePosition(pos);
+                    Print($"🌙 CLÔTURE DE FIN DE JOURNÉE FTMO : Position #{pos.Id} fermée à {timeOfDay:hh\\:mm} pour éviter le risque Overnight.");
+                }
+                if (timeOfDay >= new TimeSpan(21, 45, 0) || timeOfDay < new TimeSpan(15, 30, 0)) return;
+            }
+
             ManageBreakEven();
 
             if (Positions.FindAll("MlofiFtmo").Length > 0) return;
