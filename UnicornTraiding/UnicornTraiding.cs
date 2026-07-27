@@ -558,6 +558,9 @@ namespace cAlgo.Robots
             bool isBuySetup = currentPrice > ema20 && mlofiScore >= MlofiThreshold && isVolumeSpike;
             bool isSellSetup = currentPrice < ema20 && mlofiScore <= -MlofiThreshold && isVolumeSpike;
 
+            // Log diagnostic minute par minute pour suivi utilisateur
+            Print($"🔍 [Analyse {Server.Time:HH:mm:ss}] {(usingAlpacaLive ? "Alpaca SPY" : "Local")} Prix: ${currentPrice:F2} | MLOFI: {mlofiScore:+0.00;-0.00} (Seuil ±{MlofiThreshold:F2}) | Signal: {(isBuySetup ? "BUY SETUP" : isSellSetup ? "SELL SETUP" : "EN ATTENTE")}");
+
             if (!isBuySetup && !isSellSetup) return;
 
             if (_mlPredictor != null && _mlPredictor.IsTrained)
@@ -566,6 +569,8 @@ namespace cAlgo.Robots
                     mlofiScore, currentPrice, ema20, 0, ema20, ema50, atr1m, 0, avgVolume, rsi14, false);
 
                 var prediction = _mlPredictor.Predict(featureSample);
+
+                Print($"🧠 [ML FastTree] Évaluation du Signal : Probabilité = {prediction.Probability * 100:F1}% (Seuil Requis = 20.0%) -> {(prediction.Probability >= 0.20f ? "VALIDÉ ✅" : "REJETÉ ❌")}");
 
                 if (prediction.Probability < 0.20f)
                 {
