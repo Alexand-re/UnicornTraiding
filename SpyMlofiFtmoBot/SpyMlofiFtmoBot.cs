@@ -387,6 +387,51 @@ namespace cAlgo.Robots
             Print("==========================================================================");
         }
 
+        private List<SimpleBar> FetchLiveSpyBars()
+        {
+            var result = new List<SimpleBar>();
+            if (string.IsNullOrEmpty(AlpacaKeyId) || string.IsNullOrEmpty(AlpacaSecretKey)) return result;
+
+            try
+            {
+                using (var client = new System.Net.Http.HttpClient())
+                {
+                    client.DefaultRequestHeaders.Add("APCA-API-KEY-ID", AlpacaKeyId.Trim());
+                    client.DefaultRequestHeaders.Add("APCA-API-SECRET-KEY", AlpacaSecretKey.Trim());
+                    client.Timeout = TimeSpan.FromSeconds(5);
+
+                    string url = $"https://data.alpaca.markets/v2/stocks/bars?symbols=SPY&timeframe=1Min&limit=55&feed={AlpacaFeed}";
+                    var response = client.GetAsync(url).Result;
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        string json = response.Content.ReadAsStringAsync().Result;
+                        using (var doc = System.Text.Json.JsonDocument.Parse(json))
+                        {
+                            if (doc.RootElement.TryGetProperty("bars", out var barsElem) &&
+                                barsElem.TryGetProperty("SPY", out var spyBars))
+                            {
+                                foreach (var item in spyBars.EnumerateArray())
+                                {
+                                    result.Add(new SimpleBar
+                                    {
+                                        Open = item.GetProperty("o").GetDouble(),
+                                        High = item.GetProperty("h").GetDouble(),
+                                        Low = item.GetProperty("l").GetDouble(),
+                                        Close = item.GetProperty("c").GetDouble(),
+                                        TickVolume = item.GetProperty("v").GetDouble()
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            return result;
+        }
+
         // PHASE 2 : EXÉCUTION DU TRADING EN TEMPS RÉEL SUR CHAQUE NOUVELLE BARRE 1m
         protected override void OnBar()
         {
@@ -414,58 +459,106 @@ namespace cAlgo.Robots
             // Ne pas ouvrir de nouvelles positions s'il y en a déjà une active
             if (Positions.FindAll("MlofiFtmo").Length > 0) return;
 
-            var bars1m = MarketData.GetBars(TimeFrame.Minute);
-            int idx = bars1m.Count - 1;
-            if (idx < 50) return;
+            // Récupérer les données SPY réelles en direct via Alpaca si configuré
+            List<SimpleBar> liveBars = FetchLiveSpyBars();
+            bool usingAlpacaLive = liveBars.Count >= 50;
 
-            var bar = bars1m[idx];
-            double currentPrice = bar.Close;
+            double currentPrice;
+            double mlofiScore;
+            double ema20, ema50, avgVolume, rsi14, atr1m;
+            bool isVolumeSpike;
 
-            // Calcul MLOFI Score synthétique
-            double range = Math.Max(bar.High - bar.Low, 0.01);
-            double closePos = (currentPrice - bar.Low) / range;
-            double buyVol = bar.TickVolume * closePos;
-            double sellVol = bar.TickVolume * (1.0 - closePos);
-            double mlofiScore = (buyVol + sellVol > 0) ? (buyVol - sellVol) / (buyVol + sellVol) : 0.0;
-
-            // Technicals
-            double sum20 = 0, sum50 = 0, sumVol = 0;
-            for (int k = 0; k < 50; k++)
+            if (usingAlpacaLive)
             {
-                double c = bars1m[idx - k].Close;
-                double v = bars1m[idx - k].TickVolume;
-                if (k < 20) { sum20 += c; sumVol += v; }
-                sum50 += c;
-            }
-            double ema20 = sum20 / 20.0;
-            double ema50 = sum50 / 50.0;
-            double avgVolume = sumVol / 20.0;
+                int idx = liveBars.Count - 1;
+                var bar = liveBars[idx];
+                currentPrice = bar.Close;
 
-            // RSI 14
-            double gains = 0, losses = 0;
-            for (int k = 0; k < 14; k++)
+                double range = Math.Max(bar.High - bar.Low, 0.01);
+                double closePos = (currentPrice - bar.Low) / range;
+                double buyVol = bar.TickVolume * closePos;
+                double sellVol = bar.TickVolume * (1.0 - closePos);
+                mlofiScore = (buyVol + sellVol > 0) ? (buyVol - sellVol) / (buyVol + sellVol) : 0.0;
+
+                double sum20 = 0, sum50 = 0, sumVol = 0;
+                for (int k = 0; k < 50; k++)
+                {
+                    double c = liveBars[idx - k].Close;
+                    double v = liveBars[idx - k].TickVolume;
+                    if (k < 20) { sum20 += c; sumVol += v; }
+                    sum50 += c;
+                }
+                ema20 = sum20 / 20.0;
+                ema50 = sum50 / 50.0;
+                avgVolume = sumVol / 20.0;
+
+                double gains = 0, losses = 0;
+                for (int k = 0; k < 14; k++)
+                {
+                    double diff = liveBars[idx - k].Close - liveBars[idx - k - 1].Close;
+                    if (diff > 0) gains += diff; else losses -= diff;
+                }
+                double rs = losses > 0 ? gains / losses : 1.0;
+                rsi14 = 100.0 - (100.0 / (1.0 + rs));
+
+                double trSum = 0;
+                for (int k = 0; k < 14; k++)
+                {
+                    double tr1 = liveBars[idx - k].High - liveBars[idx - k].Low;
+                    double tr2 = Math.Abs(liveBars[idx - k].High - liveBars[idx - k - 1].Close);
+                    double tr3 = Math.Abs(liveBars[idx - k].Low - liveBars[idx - k - 1].Close);
+                    trSum += Math.Max(tr1, Math.Max(tr2, tr3));
+                }
+                atr1m = trSum / 14.0;
+                isVolumeSpike = bar.TickVolume >= avgVolume * 1.1;
+            }
+            else
             {
-                double diff = bars1m[idx - k].Close - bars1m[idx - k - 1].Close;
-                if (diff > 0) gains += diff;
-                else losses -= diff;
+                var bars1m = MarketData.GetBars(TimeFrame.Minute);
+                int idx = bars1m.Count - 1;
+                if (idx < 50) return;
+
+                var bar = bars1m[idx];
+                currentPrice = bar.Close;
+
+                double range = Math.Max(bar.High - bar.Low, 0.01);
+                double closePos = (currentPrice - bar.Low) / range;
+                double buyVol = bar.TickVolume * closePos;
+                double sellVol = bar.TickVolume * (1.0 - closePos);
+                mlofiScore = (buyVol + sellVol > 0) ? (buyVol - sellVol) / (buyVol + sellVol) : 0.0;
+
+                double sum20 = 0, sum50 = 0, sumVol = 0;
+                for (int k = 0; k < 50; k++)
+                {
+                    double c = bars1m[idx - k].Close;
+                    double v = bars1m[idx - k].TickVolume;
+                    if (k < 20) { sum20 += c; sumVol += v; }
+                    sum50 += c;
+                }
+                ema20 = sum20 / 20.0;
+                ema50 = sum50 / 50.0;
+                avgVolume = sumVol / 20.0;
+
+                double gains = 0, losses = 0;
+                for (int k = 0; k < 14; k++)
+                {
+                    double diff = bars1m[idx - k].Close - bars1m[idx - k - 1].Close;
+                    if (diff > 0) gains += diff; else losses -= diff;
+                }
+                double rs = losses > 0 ? gains / losses : 1.0;
+                rsi14 = 100.0 - (100.0 / (1.0 + rs));
+
+                double trSum = 0;
+                for (int k = 0; k < 14; k++)
+                {
+                    double tr1 = bars1m[idx - k].High - bars1m[idx - k].Low;
+                    double tr2 = Math.Abs(bars1m[idx - k].High - bars1m[idx - k - 1].Close);
+                    double tr3 = Math.Abs(bars1m[idx - k].Low - bars1m[idx - k - 1].Close);
+                    trSum += Math.Max(tr1, Math.Max(tr2, tr3));
+                }
+                atr1m = trSum / 14.0;
+                isVolumeSpike = bar.TickVolume >= avgVolume * 1.1;
             }
-            double rs = losses > 0 ? gains / losses : 1.0;
-            double rsi14 = 100.0 - (100.0 / (1.0 + rs));
-
-            double vwap = ema20;
-
-            // ATR 1m
-            double trSum = 0;
-            for (int k = 0; k < 14; k++)
-            {
-                double tr1 = bars1m[idx - k].High - bars1m[idx - k].Low;
-                double tr2 = Math.Abs(bars1m[idx - k].High - bars1m[idx - k - 1].Close);
-                double tr3 = Math.Abs(bars1m[idx - k].Low - bars1m[idx - k - 1].Close);
-                trSum += Math.Max(tr1, Math.Max(tr2, tr3));
-            }
-            double atr1m = trSum / 14.0;
-
-            bool isVolumeSpike = bar.TickVolume >= avgVolume * 1.1;
 
             bool isBuySetup = currentPrice > ema20 && mlofiScore >= MlofiThreshold && isVolumeSpike;
             bool isSellSetup = currentPrice < ema20 && mlofiScore <= -MlofiThreshold && isVolumeSpike;
@@ -476,7 +569,7 @@ namespace cAlgo.Robots
             if (_mlPredictor != null && _mlPredictor.IsTrained)
             {
                 var featureSample = MlofiMlFeatureExtractor.ExtractFeatures(
-                    mlofiScore, currentPrice, vwap, 0, ema20, ema50, atr1m, bar.TickVolume, avgVolume, rsi14, false);
+                    mlofiScore, currentPrice, ema20, 0, ema20, ema50, atr1m, 0, avgVolume, rsi14, false);
 
                 var prediction = _mlPredictor.Predict(featureSample);
 
@@ -491,11 +584,15 @@ namespace cAlgo.Robots
             double effectiveRiskPct = (currentOverallDrawdownPct >= MaxDrawdownPct) ? RiskPerTradePct * 0.5 : RiskPerTradePct;
             double riskBudgetDollars = Account.Equity * (effectiveRiskPct / 100.0);
 
-            double slDistance = atr1m * SlAtrMultiplier;
-            double tpDistance = atr1m * TpAtrMultiplier;
+            // Ratio d'échelle si l'analyse est faite sur SPY et l'exécution sur le symbole local cTrader (ex: US500.cash)
+            double localPrice = Symbol.Ask;
+            double ratio = (usingAlpacaLive && currentPrice > 0) ? (localPrice / currentPrice) : 1.0;
 
-            if (slDistance <= 0.05) slDistance = 0.50;
-            if (tpDistance <= 0.05) tpDistance = 1.00;
+            double slDistance = atr1m * SlAtrMultiplier * ratio;
+            double tpDistance = atr1m * TpAtrMultiplier * ratio;
+
+            if (slDistance <= (0.05 * ratio)) slDistance = 0.50 * ratio;
+            if (tpDistance <= (0.05 * ratio)) tpDistance = 1.00 * ratio;
 
             double volumeLots = Symbol.VolumeInUnitsToQuantity(riskBudgetDollars / slDistance);
             volumeLots = Symbol.NormalizeVolumeInUnits(volumeLots, RoundingMode.ToNearest);
@@ -506,7 +603,7 @@ namespace cAlgo.Robots
             double slPips = slDistance / Symbol.PipSize;
             double tpPips = tpDistance / Symbol.PipSize;
 
-            Print($"🎯 EXECUTION SIGNAL MLOFI FTMO : {tradeType} | Lots: {volumeLots} | SL: {slPips:F1} pips | TP: {tpPips:F1} pips");
+            Print($"🎯 EXECUTION SIGNAL MLOFI FTMO ({(usingAlpacaLive ? "Alpaca SPY Live" : "Local")}) : {tradeType} | Lots: {volumeLots} | SL: {slPips:F1} pips | TP: {tpPips:F1} pips");
             ExecuteMarketOrder(tradeType, Symbol.Name, volumeLots, "MlofiFtmo", slPips, tpPips);
         }
 
