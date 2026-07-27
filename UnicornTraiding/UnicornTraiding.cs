@@ -224,48 +224,74 @@ namespace cAlgo.Robots
             {
                 try
                 {
-                    Print("📥 Téléchargement des barres 1m réelles SPY depuis Alpaca Market Data API...");
+                    Print("📥 Téléchargement historique SPY 1m depuis Alpaca (pagination, ~1 an)...");
                     using (var client = new System.Net.Http.HttpClient())
                     {
                         client.DefaultRequestHeaders.Add("APCA-API-KEY-ID", AlpacaKeyId.Trim());
                         client.DefaultRequestHeaders.Add("APCA-API-SECRET-KEY", AlpacaSecretKey.Trim());
+                        client.Timeout = TimeSpan.FromSeconds(120);
 
-                        string startDate = DateTime.UtcNow.AddDays(-60).ToString("yyyy-MM-ddTHH:mm:ssZ");
-                        string url = $"https://data.alpaca.markets/v2/stocks/bars?symbols=SPY&timeframe=1Min&limit=10000&start={startDate}&feed={AlpacaFeed}";
-                        var response = client.GetAsync(url).Result;
+                        string startDate = DateTime.UtcNow.AddDays(-365).ToString("yyyy-MM-ddTHH:mm:ssZ");
+                        string nextPageToken = null;
+                        int maxPages = 10;
+                        int page = 0;
 
-                        if (response.IsSuccessStatusCode)
+                        while (page < maxPages)
                         {
+                            string url = $"https://data.alpaca.markets/v2/stocks/bars?symbols=SPY&timeframe=1Min&limit=10000&start={startDate}&feed={AlpacaFeed}";
+                            if (nextPageToken != null)
+                                url += $"&page_token={Uri.EscapeDataString(nextPageToken)}";
+
+                            var response = client.GetAsync(url).Result;
+                            if (!response.IsSuccessStatusCode)
+                            {
+                                Print($"⚠️ Échec Alpaca page {page + 1} (Status: {response.StatusCode}).");
+                                break;
+                            }
+
                             string json = response.Content.ReadAsStringAsync().Result;
                             using (var doc = System.Text.Json.JsonDocument.Parse(json))
                             {
                                 if (doc.RootElement.TryGetProperty("bars", out var barsElem) &&
                                     barsElem.TryGetProperty("SPY", out var spyBars))
                                 {
+                                    int countBefore = result.Count;
                                     foreach (var item in spyBars.EnumerateArray())
                                     {
-                                        double o = item.GetProperty("o").GetDouble();
-                                        double h = item.GetProperty("h").GetDouble();
-                                        double l = item.GetProperty("l").GetDouble();
-                                        double c = item.GetProperty("c").GetDouble();
-                                        double v = item.GetProperty("v").GetDouble();
-
-                                        result.Add(new SimpleBar { Open = o, High = h, Low = l, Close = c, TickVolume = v });
+                                        result.Add(new SimpleBar
+                                        {
+                                            Open   = item.GetProperty("o").GetDouble(),
+                                            High   = item.GetProperty("h").GetDouble(),
+                                            Low    = item.GetProperty("l").GetDouble(),
+                                            Close  = item.GetProperty("c").GetDouble(),
+                                            TickVolume = item.GetProperty("v").GetDouble()
+                                        });
                                     }
+                                    Print($"📄 Page {page + 1} : +{result.Count - countBefore} barres (Total: {result.Count})");
+
+                                    nextPageToken = null;
+                                    if (doc.RootElement.TryGetProperty("next_page_token", out var npt) &&
+                                        npt.ValueKind != System.Text.Json.JsonValueKind.Null)
+                                        nextPageToken = npt.GetString();
                                 }
+                                else break;
                             }
-                            Print($"✅ {result.Count} barres 1m réelles SPY chargées avec succès depuis Alpaca API !");
+
+                            page++;
+                            if (nextPageToken == null) break;
+                        }
+
+                        if (result.Count > 0)
+                        {
+                            Print($"✅ {result.Count} barres 1m SPY chargées depuis Alpaca API !");
                             return result;
                         }
-                        else
-                        {
-                            Print($"⚠️ Échec réponse Alpaca API (Status: {response.StatusCode}). Repli sur barres locales cTrader...");
-                        }
+                        Print("⚠️ Aucune barre Alpaca. Repli sur barres locales cTrader...");
                     }
                 }
                 catch (Exception ex)
                 {
-                    Print($"⚠️ Exception lors de l'appel Alpaca API: {ex.Message}. Repli sur barres locales cTrader...");
+                    Print($"⚠️ Exception Alpaca API: {ex.Message}. Repli sur barres locales cTrader...");
                 }
             }
 
