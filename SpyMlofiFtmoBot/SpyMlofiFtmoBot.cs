@@ -174,11 +174,11 @@ namespace cAlgo.Robots
         [Parameter("Seuil MLOFI Score", Group = "1. Target Setup", DefaultValue = 0.25)]
         public double MlofiThreshold { get; set; } = 0.25;
 
-        [Parameter("Multiplicateur StopLoss (x ATR)", Group = "3. Bracket Orders", DefaultValue = 0.6)]
-        public double SlAtrMultiplier { get; set; } = 0.6;
+        [Parameter("Multiplicateur StopLoss (x ATR)", Group = "3. Bracket Orders", DefaultValue = 0.8)]
+        public double SlAtrMultiplier { get; set; } = 0.8;
 
-        [Parameter("Multiplicateur TakeProfit (x ATR)", Group = "3. Bracket Orders", DefaultValue = 1.8)]
-        public double TpAtrMultiplier { get; set; } = 1.8;
+        [Parameter("Multiplicateur TakeProfit (x ATR)", Group = "3. Bracket Orders", DefaultValue = 1.6)]
+        public double TpAtrMultiplier { get; set; } = 1.6;
 
         [Parameter("Activer Apprentissage ML FastTree", Group = "4. Machine Learning", DefaultValue = true)]
         public bool EnableMlTraining { get; set; } = true;
@@ -646,8 +646,8 @@ namespace cAlgo.Robots
                 double currentProfitPips = pos.Pips;
                 double tpDistancePips = Math.Abs(pos.TakeProfit.GetValueOrDefault() - pos.EntryPrice) / Symbol.PipSize;
 
-                // Si le profit atteint 40% de la cible TP, bouger le Stop Loss à Break-Even
-                if (currentProfitPips >= tpDistancePips * 0.40)
+                // Si le profit atteint 75% de la cible TP, bouger le Stop Loss à Break-Even
+                if (currentProfitPips >= tpDistancePips * 0.75)
                 {
                     if (pos.TradeType == TradeType.Buy && pos.StopLoss < pos.EntryPrice)
                     {
