@@ -162,8 +162,8 @@ namespace cAlgo.Robots
         [Parameter("Capital Initial FTMO ($)", Group = "2. Risk Management FTMO", DefaultValue = 100000.0)]
         public double InitialCapital { get; set; } = 100000.0;
 
-        [Parameter("Risque Par Trade (%)", Group = "2. Risk Management FTMO", DefaultValue = 0.30)]
-        public double RiskPerTradePct { get; set; } = 0.30;
+        [Parameter("Risque Par Trade (%)", Group = "2. Risk Management FTMO", DefaultValue = 0.45)]
+        public double RiskPerTradePct { get; set; } = 0.45;
 
         [Parameter("Max Positions Simultanées", Group = "2. Risk Management FTMO", DefaultValue = 2)]
         public int MaxConcurrentTrades { get; set; } = 2;
