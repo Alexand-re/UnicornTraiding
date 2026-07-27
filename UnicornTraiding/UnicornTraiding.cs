@@ -400,7 +400,8 @@ namespace cAlgo.Robots
                     client.DefaultRequestHeaders.Add("APCA-API-SECRET-KEY", AlpacaSecretKey.Trim());
                     client.Timeout = TimeSpan.FromSeconds(5);
 
-                    string url = $"https://data.alpaca.markets/v2/stocks/bars?symbols=SPY&timeframe=1Min&limit=55&feed={AlpacaFeed}";
+                    string startDate = DateTime.UtcNow.AddHours(-4).ToString("yyyy-MM-ddTHH:mm:ssZ");
+                    string url = $"https://data.alpaca.markets/v2/stocks/bars?symbols=SPY&timeframe=1Min&limit=55&start={startDate}&feed={AlpacaFeed}";
                     var response = client.GetAsync(url).Result;
 
                     if (response.IsSuccessStatusCode)
