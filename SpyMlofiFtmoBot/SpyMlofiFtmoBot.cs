@@ -91,7 +91,14 @@ namespace cAlgo.Robots
                 return (0, 0, 0, 0);
             }
 
-            var dataView = _mlContext.Data.LoadFromEnumerable(trainingData);
+            // Séparation 80% Entraînement / 20% Test Hors-Échantillon (Out-of-Sample)
+            int trainCount = (int)(trainingData.Count * 0.80);
+            var trainSamples = trainingData.Take(trainCount).ToList();
+            var testSamples = trainingData.Skip(trainCount).ToList();
+
+            var trainDataView = _mlContext.Data.LoadFromEnumerable(trainSamples);
+            var testDataView = _mlContext.Data.LoadFromEnumerable(testSamples.Count > 0 ? testSamples : trainSamples);
+
             var pipeline = _mlContext.Transforms.Concatenate("Features",
                     nameof(MlofiMlFeatureData.MlofiScore),
                     nameof(MlofiMlFeatureData.VwapDistancePercent),
@@ -111,10 +118,10 @@ namespace cAlgo.Robots
                         FeatureColumnName = "Features"
                     }));
 
-            log("🧠 Entraînement du modèle Microsoft.ML FastTree GBDT en cours...");
-            _model = pipeline.Fit(dataView);
+            log($"🧠 Entraînement FastTree GBDT sur {trainSamples.Count} échantillons (Évaluation Hors-Éch. sur {testSamples.Count})...");
+            _model = pipeline.Fit(trainDataView);
 
-            var predictionsView = _model.Transform(dataView);
+            var predictionsView = _model.Transform(testDataView);
             var metrics = _mlContext.BinaryClassification.Evaluate(predictionsView, labelColumnName: nameof(MlofiMlFeatureData.Label));
 
             _predictionEngine = _mlContext.Model.CreatePredictionEngine<MlofiMlFeatureData, MlofiMlPredictionData>(_model);
