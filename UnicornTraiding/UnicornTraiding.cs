@@ -1,2308 +1,444 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
-using System.Text.Json;
 using cAlgo.API;
-using MongoDB.Bson;
-using MongoDB.Bson.Serialization.Attributes;
-using MongoDB.Driver;
+using cAlgo.API.Internals;
+using Microsoft.ML;
+using Microsoft.ML.Data;
+using Microsoft.ML.Trainers.FastTree;
 
 namespace cAlgo.Robots
 {
-    // ==========================================================================================
-    // CONFIGURATION CLASSES
-    // ==========================================================================================
-    public class CrashCatcherMstpConfiguration
+    public struct SimpleBar
     {
-        public int UniverseSize { get; set; } = 4;
-        public double InitialDropPct { get; set; } = 0.02935121389541366;
-        public bool UseAtrScaledDrop { get; set; } = false;
-        public double DropAtrFactor { get; set; } = 0.919936977429286;
-        public double ReferenceAtrPct { get; set; } = 0.00771423086650401;
-        public double MaxCorrelationThreshold { get; set; } = 0.8208337189726689;
-        public int CorrelationLookback { get; set; } = 10;
-        public double SystemicCrashThreshold { get; set; } = 0.8222295446890544;
-        public double SystemicMomentumFactor { get; set; } = 0.6414465306985409;
-        public int MomentumLookback { get; set; } = 12;
-        public int WindowSize { get; set; } = 10;
-        public double GridSpacingPct { get; set; } = 0.01384274580694863;
-        public bool UseAtrScaledGrid { get; set; } = true;
-        public double GridAtrFactor { get; set; } = 0.25341375337606936;
-        public double ScalingRatio { get; set; } = 4.952039750270564;
-        public bool UseNormalizedLeverage { get; set; } = true;
-        public int MaxTranchesPerSymbol { get; set; } = 2;
-        public int MinDaysBetweenTranches { get; set; } = 2;
-        public bool SlBasedOnFirstTranche { get; set; } = false;
-        public List<double>? TrancheWeights { get; set; } = null;
-        public double SymbolStopLossPct { get; set; } = 0.5490085718915838;
-        public double TrailingStopPct { get; set; } = 0.22811442843084895;
-        public double AtrTrailingStopMultiplier { get; set; } = 9.310419767773904;
-        public double TargetProfitFinalPct { get; set; } = 0.013290116364737096;
-        public List<TakeProfitStage> Stages { get; set; } = new()
-        {
-            new TakeProfitStage {ProfitThresholdPct = 0.015474284270716477, SellRatio = 0.2388255434737977},
-            new TakeProfitStage {ProfitThresholdPct = 0.04136917216779146, SellRatio = 0.2039360993552324},
-            new TakeProfitStage {ProfitThresholdPct = 0.053253583107269235, SellRatio = 0.15756063341087556}
-        };
-        public TrailingStopMode TsMode { get; set; } = TrailingStopMode.AllPosition;
-        public bool ExitTrancheAtStageThreshold { get; set; } = true;
-        public double LeverageMultiplier { get; set; } = 2.0;
-        public double MaxSymbolCapitalExposurePct { get; set; } = 0.68;
-        public double MaxLeverageLimit { get; set; } = 3.07;
-        public double RecoveryLeverageMultiplier { get; set; } = 0.4247;
-        public int RecoveryDurationDays { get; set; } = 15;
-        public double CircuitBreakerPct { get; set; } = 0.7777977636073705;
-        public double TrailingEquityStopPct { get; set; } = 0.18916648692878266;
-        public double VolatilityTarget { get; set; } = 0.0114;
-        public double VolatilityMinMultiplier { get; set; } = 1.0;
-        public bool UseRegimeFilter { get; set; } = false;
-        public bool DisableRotationExit { get; set; } = true;
-        public double SlippagePct { get; set; } = 0.00025;
-        public double MaintenanceMarginPct { get; set; } = 0.30;
-        public double DailyDrawdownLimitPct { get; set; } = 0.0;
-        public int DailyLossFreezeDays { get; set; } = 1;
-        public bool UseFractionalShares { get; set; } = true;
-
-        public bool UseTrendRegimeSpacing { get; set; } = true;
-        public double TrendRegimeSpacingFactor { get; set; } = 0.9182134167841698;
-        public int TrendRegimePeriod { get; set; } = 57;
-        public bool UseMarketPanicSpacing { get; set; } = false;
-        public double MarketPanicSpacingFactor { get; set; } = 1.5;
-        public bool UseProgressiveGrid { get; set; } = false;
-        public double ProgressiveGridFactor { get; set; } = 0.6274374381301168;
-        public bool UseDynamicMaxTranches { get; set; } = false;
-        public int HighVolMaxTranches { get; set; } = 4;
-        public double HighVolThresholdPct { get; set; } = 0.025;
-
-        public static CrashCatcherMstpConfiguration GetFtmoConfiguration()
-        {
-            return new CrashCatcherMstpConfiguration
-            {
-                UniverseSize = 4,
-                InitialDropPct = 0.029215447762615723,
-                UseAtrScaledDrop = false,
-                DropAtrFactor = 0.919936977429286,
-                ReferenceAtrPct = 0.00771423086650401,
-                MaxCorrelationThreshold = 0.8208337189726689,
-                CorrelationLookback = 10,
-                SystemicCrashThreshold = 0.5701078946330156,
-                SystemicMomentumFactor = 0.7905645525970331,
-                MomentumLookback = 11,
-                WindowSize = 10,
-                GridSpacingPct = 0.012426631307428066,
-                UseAtrScaledGrid = true,
-                GridAtrFactor = 0.25341375337606936,
-                ScalingRatio = 4.952039750270564,
-                UseNormalizedLeverage = true,
-                MaxTranchesPerSymbol = 2,
-                MinDaysBetweenTranches = 2,
-                SlBasedOnFirstTranche = false,
-                TrancheWeights = null,
-                SymbolStopLossPct = 0.4558759823701698,
-                TrailingStopPct = 0.36728864024267,
-                AtrTrailingStopMultiplier = 9.310419767773904,
-                TargetProfitFinalPct = 0.0767257920567532,
-                Stages = new List<TakeProfitStage>
-                {
-                    new TakeProfitStage {ProfitThresholdPct = 0.015474284270716477, SellRatio = 0.2388255434737977},
-                    new TakeProfitStage {ProfitThresholdPct = 0.04136917216779146, SellRatio = 0.2039360993552324},
-                    new TakeProfitStage {ProfitThresholdPct = 0.053253583107269235, SellRatio = 0.15756063341087556}
-                },
-                TsMode = TrailingStopMode.AllPosition,
-                ExitTrancheAtStageThreshold = true,
-                LeverageMultiplier = 1.0,
-                MaxLeverageLimit = 1.29,
-                RecoveryLeverageMultiplier = 0.4504,
-                RecoveryDurationDays = 15,
-                CircuitBreakerPct = 0.9040154318530185,
-                TrailingEquityStopPct = 0.1,
-                VolatilityTarget = 0.0114,
-                VolatilityMinMultiplier = 1.0,
-                UseRegimeFilter = false,
-                DisableRotationExit = true,
-                SlippagePct = 0.00025,
-                MaintenanceMarginPct = 0.3,
-                DailyDrawdownLimitPct = 0,
-                DailyLossFreezeDays = 1,
-                UseFractionalShares = true,
-                UseTrendRegimeSpacing = true,
-                TrendRegimeSpacingFactor = 0.9182134167841698,
-                TrendRegimePeriod = 57,
-                UseMarketPanicSpacing = false,
-                MarketPanicSpacingFactor = 1.5,
-                UseProgressiveGrid = false,
-                ProgressiveGridFactor = 0.6274374381301168,
-                UseDynamicMaxTranches = false,
-                HighVolMaxTranches = 4,
-                HighVolThresholdPct = 0.025
-            };
-        }
-    }
-
-    public class TakeProfitStage
-    {
-        public double ProfitThresholdPct { get; set; }
-        public double SellRatio { get; set; }
-    }
-
-    public enum TrailingStopMode
-    {
-        None = 0,
-        AllPosition = 1,
-        IndividualTranche = 2
-    }
-
-    // ==========================================================================================
-    // STATE CLASSES
-    // ==========================================================================================
-    [BsonIgnoreExtraElements]
-    public class CrashCatcherDailyState
-    {
-        [BsonId]
-        [BsonRepresentation(BsonType.ObjectId)]
-        public string Id { get; set; } = ObjectId.GenerateNewId().ToString();
-
-        public DateTime Date { get; set; }
-        public double TotalEquity { get; set; }
-        public double Cash { get; set; }
-        public double MaxDrawdown { get; set; }
-        public double PeakEquity { get; set; }
-        public double DailyReturn { get; set; }
-        public double TotalRealizedPnl { get; set; }
-        public double DailyRealizedPnl { get; set; }
-        public List<CrashCatcherOrder> ActiveOrders { get; set; } = new();
-        public List<CrashCatcherClosedOrder> ClosedToday { get; set; } = new();
-        public bool CircuitBreakerTriggered { get; set; }
-        public bool ProfitFloorTriggered { get; set; }
-        public double InitialCash { get; set; }
-        public Dictionary<string, DateTime> DynamicBlacklist { get; set; } = new();
-        public Dictionary<string, DateTime> LastEntryDates { get; set; } = new();
-        public double PeakRealizedEquity { get; set; }
-        public Dictionary<string, double> SymbolPnL { get; set; } = new();
-
-        public double CurrentDrawdownPct { get; set; }
-        public double TotalExposure { get; set; }
-        public double EffectiveLeverage { get; set; }
-        public double UnrealizedPnl { get; set; }
-        public int ActiveSymbolCount { get; set; }
-        public int BuyActionsToday { get; set; }
-        public int SellActionsToday { get; set; }
-        public bool SystemicCrashActive { get; set; }
-        public int RecoveryDaysRemaining { get; set; }
-        public int DailyLossFreezeDaysRemaining { get; set; }
-        public int DaysSinceLastCrash { get; set; }
-        public double RealizedEquity { get; set; }
-        public double CumulativeCashInterest { get; set; }
-        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
-    }
-
-    public class CrashCatcherOrder
-    {
-        public string Symbol { get; set; } = string.Empty;
-        public string Sector { get; set; } = string.Empty;
-        public double Qty { get; set; }
-        public double EntryPrice { get; set; }
-        public double CurrentPrice { get; set; }
-        public DateTime EntryDate { get; set; }
-        public double HighPriceSinceEntry { get; set; }
-        public int LastStageReached { get; set; } = 0;
-        public int TrancheIndex { get; set; } = 0;
-        public bool IsRunner { get; set; }
-    }
-
-    public class CrashCatcherClosedOrder
-    {
-        public string Symbol { get; set; } = string.Empty;
-        public double Qty { get; set; }
-        public double EntryPrice { get; set; }
-        public double ExitPrice { get; set; }
-        public double RealizedPnl { get; set; }
-        public double GainPct { get; set; }
-        public DateTime EntryDate { get; set; }
-        public DateTime ExitDate { get; set; }
-        public bool WasRunner { get; set; }
-        public string ExitReason { get; set; } = string.Empty;
-        public int HoldingDays { get; set; }
-    }
-
-    public class Bars
-    {
-        public DateTime Timestamp { get; set; }
         public double Open { get; set; }
         public double High { get; set; }
         public double Low { get; set; }
         public double Close { get; set; }
-        public long Volume { get; set; }
-        public int TradeCount { get; set; }
-        public double VolumeWeightedAveragePrice { get; set; }
+        public double TickVolume { get; set; }
     }
 
     // ==========================================================================================
-    // TRADING ENGINE
+    // 1. DATA MODELS & ML FEATURE EXTRACTOR
     // ==========================================================================================
-    public class CrashCatcherMstpEngine
+    public class MlofiMlFeatureData
     {
-        public enum ActionType
+        public float MlofiScore { get; set; }
+        public float VwapDistancePercent { get; set; }
+        public float VwapSlope { get; set; }
+        public float EmaRatio { get; set; }
+        public float NormalizedAtr { get; set; }
+        public float VolumeRatio { get; set; }
+        public float Rsi14 { get; set; }
+        public bool Label { get; set; }
+    }
+
+    public class MlofiMlPredictionData
+    {
+        [ColumnName("PredictedLabel")]
+        public bool PredictedLabel { get; set; }
+
+        [ColumnName("Probability")]
+        public float Probability { get; set; }
+
+        [ColumnName("Score")]
+        public float Score { get; set; }
+    }
+
+    public static class MlofiMlFeatureExtractor
+    {
+        public static MlofiMlFeatureData ExtractFeatures(
+            double mlofiScore,
+            double currentPrice,
+            double vwap,
+            double vwapSlope,
+            double ema20,
+            double ema50,
+            double atr1m,
+            double currentVolume,
+            double avgVolume20,
+            double rsi14,
+            bool label = false)
         {
-            Buy,
-            Sell,
-            Liquidate,
-            PartialSell,
-            Rebalance
+            float vwapDist = vwap > 0 ? (float)((currentPrice - vwap) / vwap * 100.0) : 0f;
+            float emaRat = ema50 > 0 ? (float)(ema20 / ema50) : 1.0f;
+            float normAtr = currentPrice > 0 ? (float)(atr1m / currentPrice * 100.0) : 0f;
+            float volRatio = avgVolume20 > 0 ? (float)(currentVolume / avgVolume20) : 1.0f;
+
+            return new MlofiMlFeatureData
+            {
+                MlofiScore = (float)mlofiScore,
+                VwapDistancePercent = vwapDist,
+                VwapSlope = (float)vwapSlope,
+                EmaRatio = emaRat,
+                NormalizedAtr = normAtr,
+                VolumeRatio = volRatio,
+                Rsi14 = (float)rsi14,
+                Label = label
+            };
+        }
+    }
+
+    public class MlofiMlPredictorEngine
+    {
+        private readonly MLContext _mlContext;
+        private ITransformer? _model;
+        private PredictionEngine<MlofiMlFeatureData, MlofiMlPredictionData>? _predictionEngine;
+
+        public bool IsTrained { get; private set; }
+
+        public MlofiMlPredictorEngine(int seed = 42)
+        {
+            _mlContext = new MLContext(seed: seed);
         }
 
-        public class TradingAction
+        public (double Accuracy, double Auc, double Precision, int SampleCount) TrainModel(List<MlofiMlFeatureData> trainingData, Action<string> log)
         {
-            public string Symbol { get; set; } = string.Empty;
-            public ActionType Type { get; set; }
-            public double Quantity { get; set; }
-            public double Price { get; set; }
-            public double Amount { get; set; }
-            public int? NewStage { get; set; }
-            public string Reason { get; set; } = string.Empty;
-            public DateTime? NewBlacklistEnd { get; set; }
-            public CrashCatcherOrder? TargetOrder { get; set; }
-            public int TrancheIndex { get; set; }
+            if (trainingData == null || trainingData.Count < 50)
+            {
+                log("⚠️ Échantillons d'entraînement insuffisants (< 50). ML désactivé.");
+                return (0, 0, 0, 0);
+            }
+
+            int trainCount = (int)(trainingData.Count * 0.80);
+            var trainSamples = trainingData.Take(trainCount).ToList();
+            var testSamples = trainingData.Skip(trainCount).ToList();
+
+            var trainDataView = _mlContext.Data.LoadFromEnumerable(trainSamples);
+            var testDataView = _mlContext.Data.LoadFromEnumerable(testSamples.Count > 0 ? testSamples : trainSamples);
+
+            var pipeline = _mlContext.Transforms.Concatenate("Features",
+                    nameof(MlofiMlFeatureData.MlofiScore),
+                    nameof(MlofiMlFeatureData.VwapDistancePercent),
+                    nameof(MlofiMlFeatureData.VwapSlope),
+                    nameof(MlofiMlFeatureData.EmaRatio),
+                    nameof(MlofiMlFeatureData.NormalizedAtr),
+                    nameof(MlofiMlFeatureData.VolumeRatio),
+                    nameof(MlofiMlFeatureData.Rsi14))
+                .Append(_mlContext.BinaryClassification.Trainers.FastTree(
+                    new FastTreeBinaryTrainer.Options
+                    {
+                        NumberOfLeaves = 20,
+                        NumberOfTrees = 100,
+                        MinimumExampleCountPerLeaf = 10,
+                        LearningRate = 0.1,
+                        LabelColumnName = nameof(MlofiMlFeatureData.Label),
+                        FeatureColumnName = "Features"
+                    }));
+
+            log($"🧠 Entraînement FastTree GBDT sur {trainSamples.Count} échantillons (Évaluation Hors-Éch. sur {testSamples.Count})...");
+            _model = pipeline.Fit(trainDataView);
+
+            var predictionsView = _model.Transform(testDataView);
+            var metrics = _mlContext.BinaryClassification.Evaluate(predictionsView, labelColumnName: nameof(MlofiMlFeatureData.Label));
+
+            _predictionEngine = _mlContext.Model.CreatePredictionEngine<MlofiMlFeatureData, MlofiMlPredictionData>(_model);
+            IsTrained = true;
+
+            return (metrics.Accuracy, metrics.AreaUnderRocCurve, metrics.PositivePrecision, trainingData.Count);
         }
 
-        public Action<string>? OnDebug { get; set; }
-
-        public class EngineResult
+        public MlofiMlPredictionData Predict(MlofiMlFeatureData sample)
         {
-            public List<TradingAction> Actions { get; set; } = new();
-            public bool CircuitBreakerTriggered { get; set; }
-            public bool SystemicCrashActive { get; set; }
-            public bool ProfitFloorTriggered { get; set; }
-        }
-
-        public class SimulationDailyDetails
-        {
-            public DateTime Date { get; set; }
-            public double Equity { get; set; }
-            public double Cash { get; set; }
-            public double Exposure { get; set; }
-            public double Leverage { get; set; }
-            public bool IsKrach { get; set; }
-            public int PositionCount { get; set; }
-        }
-
-        public class SimulationResult
-        {
-            public double TotalEquity { get; set; }
-            public double FinalCash { get; set; }
-            public double MaxDrawdown { get; set; }
-            public double TotalReturn { get; set; }
-            public int TradeCount { get; set; }
-            public List<SimulationDailyDetails> DailyDetails { get; set; } = new();
-            public List<TradingAction> TradeHistory { get; set; } = new();
-        }
-
-        public SimulationResult RunSimulation(CrashCatcherMstpConfiguration config,
-            double initialCapital, DateTime startDate, DateTime endDate,
-            Dictionary<string, List<Bars>> allBars, List<string> tradingUniverse,
-            List<string> systemicUniverse, Dictionary<string, string>? sectorMap = null)
-        {
-            SimulationResult result = new SimulationResult();
-            CrashCatcherDailyState state = new CrashCatcherDailyState
-                {InitialCash = initialCapital, Cash = initialCapital, Date = startDate};
-
-            List<string> symbols = tradingUniverse ?? allBars.Keys.Where(s => s != "SPY").ToList();
-            List<string> systemicPool = systemicUniverse ?? symbols;
-            int tradeCount = 0;
-
-            List<DateTime> dRange = allBars["SPY"]
-                .Where(b => b.Timestamp.Date >= startDate.Date && b.Timestamp.Date <= endDate.Date)
-                .Select(b => b.Timestamp.Date)
-                .OrderBy(d => d)
-                .ToList();
-
-            DateTime? lastDate = null;
-            foreach (DateTime d in dRange)
+            if (!IsTrained || _predictionEngine == null)
             {
-                lastDate = d;
-
-                Dictionary<string, int> indices = new Dictionary<string, int>();
-                foreach (KeyValuePair<string, List<Bars>> kvp in allBars)
-                {
-                    int idx = kvp.Value.FindLastIndex(b => b.Timestamp.Date <= d);
-                    if (idx >= 0) indices[kvp.Key] = idx;
-                }
-
-                if (!indices.ContainsKey("SPY")) continue;
-
-                double mtm = 0;
-                foreach (CrashCatcherOrder o in state.ActiveOrders)
-                {
-                    if (indices.TryGetValue(o.Symbol, out int idx))
-                    {
-                        double previousClose = o.CurrentPrice;
-                        double newClose = allBars[o.Symbol][idx].Close;
-
-                        if (previousClose > 0 && newClose > 0)
-                        {
-                            double ratio = newClose / previousClose;
-
-                            if (Math.Abs(ratio - 1.0) > 0.05)
-                            {
-                                double splitFactor = 1.0;
-                                if (Math.Abs(ratio - 2.0) < 0.1) splitFactor = 2.0;
-                                else if (Math.Abs(ratio - 3.0) < 0.1) splitFactor = 3.0;
-                                else if (Math.Abs(ratio - 4.0) < 0.1) splitFactor = 4.0;
-                                else if (Math.Abs(ratio - 1.5) < 0.1) splitFactor = 1.5;
-                                else if (Math.Abs(ratio - 0.5) < 0.05) splitFactor = 0.5;
-                                else if (Math.Abs(ratio - 0.333) < 0.05) splitFactor = 0.333;
-                                else if (Math.Abs(ratio - 0.25) < 0.05) splitFactor = 0.25;
-                                else if (Math.Abs(ratio - 0.1) < 0.05) splitFactor = 0.1;
-                                else if (Math.Abs(ratio - 0.2) < 0.05) splitFactor = 0.2;
-                                else if (Math.Abs(ratio - 20.0) < 1.0) splitFactor = 20.0;
-                                else if (Math.Abs(ratio - 1.333) < 0.05) splitFactor = 1.333;
-                                else if (Math.Abs(ratio - 0.666) < 0.05) splitFactor = 0.666;
-                                else if (Math.Abs(ratio - 1.666) < 0.05) splitFactor = 1.666;
-
-                                if (splitFactor != 1.0)
-                                {
-                                    Console.WriteLine(
-                                        $"[SPLIT DETECTED] {o.Symbol} on {d:yyyy-MM-dd}: ratio={ratio:F4}, factor={splitFactor}. Adjusting position.");
-
-                                    o.Qty = (o.Qty * splitFactor);
-                                    o.EntryPrice /= splitFactor;
-                                    o.HighPriceSinceEntry /= splitFactor;
-
-                                    newClose = previousClose / splitFactor;
-                                }
-                            }
-                        }
-
-                        o.CurrentPrice = newClose;
-                        mtm += o.Qty * o.CurrentPrice;
-                        if (o.CurrentPrice > o.HighPriceSinceEntry) o.HighPriceSinceEntry = o.CurrentPrice;
-                    }
-                }
-
-                state.TotalEquity = state.Cash + mtm;
-
-                if (state.TotalEquity > state.PeakEquity)
-                {
-                    state.PeakEquity = state.TotalEquity;
-                }
-
-                double currentDd = (state.PeakEquity > 0)
-                    ? (state.TotalEquity - state.PeakEquity) / state.PeakEquity
-                    : 0;
-                if (currentDd < state.MaxDrawdown)
-                {
-                    state.MaxDrawdown = currentDd;
-                }
-
-                List<string> rankedSymbols = symbols
-                    .Where(s => indices.ContainsKey(s) && indices[s] >= config.MomentumLookback)
-                    .Select(s => new
-                    {
-                        Symbol = s,
-                        Momentum = allBars[s][indices[s]].Close /
-                                   allBars[s][indices[s] - config.MomentumLookback].Close
-                    })
-                    .OrderByDescending(x => x.Momentum)
-                    .Select(x => x.Symbol)
-                    .ToList();
-
-                if (!config.UseNormalizedLeverage)
-                {
-                    List<string> currentPortfolioSymbols = state.ActiveOrders.Select(o => o.Symbol).Distinct().ToList();
-                    foreach (string sym in currentPortfolioSymbols)
-                    {
-                        int rank = rankedSymbols.IndexOf(sym);
-                        if (rank > config.UniverseSize * 2)
-                        {
-                            double p = allBars[sym][indices[sym]].Close;
-                            ApplyActions(state, new EngineResult
-                            {
-                                Actions = new List<TradingAction>
-                                {
-                                    new TradingAction
-                                    {
-                                        Symbol = sym, Type = ActionType.Liquidate, Price = p, Reason = "RotationLegacy"
-                                    }
-                                }
-                            }, d, config.SlippagePct);
-                        }
-                    }
-                }
-
-                double targetLev = config.LeverageMultiplier;
-
-                double spyAtr = GetAtr("SPY", allBars["SPY"], indices["SPY"]);
-                double spyPrice = allBars["SPY"][indices["SPY"]].Close;
-                double spyVolPct = spyAtr / spyPrice;
-
-                double volMultiplier = (spyVolPct > 0) ? (config.VolatilityTarget / spyVolPct) : 1.0;
-
-                volMultiplier = Math.Clamp(volMultiplier, config.VolatilityMinMultiplier, 1);
-                targetLev *= volMultiplier;
-
-                if (state.RecoveryDaysRemaining > 0) targetLev *= config.RecoveryLeverageMultiplier;
-
-                bool isSpyRegimeSafe = true;
-                if (config.UseRegimeFilter && allBars.ContainsKey("SPY"))
-                {
-                    List<Bars> spyBars = allBars["SPY"];
-                    int spyIdx = indices["SPY"];
-                    if (spyIdx >= 200)
-                    {
-                        double ma200 = spyBars.GetRange(spyIdx - 200, 200).Average(b => b.Close);
-                        isSpyRegimeSafe = spyBars[spyIdx].Close > ma200;
-                    }
-                }
-
-                EngineResult dayRes = ProcessDay(d, config, state, allBars, indices, rankedSymbols, isSpyRegimeSafe,
-                    systemicPool, sectorMap);
-                ApplyActions(state, dayRes, d, config.SlippagePct);
-
-                foreach (TradingAction act in dayRes.Actions)
-                {
-                    result.TradeHistory.Add(act);
-                    if (act.Type == ActionType.Buy || act.Type == ActionType.Sell || act.Type == ActionType.PartialSell)
-                        tradeCount++;
-                }
-
-                result.DailyDetails.Add(new SimulationDailyDetails
-                {
-                    Date = d,
-                    Equity = state.TotalEquity,
-                    Cash = state.Cash,
-                    Exposure = state.ActiveOrders.Sum(o => o.Qty * allBars[o.Symbol][indices[o.Symbol]].Close),
-                    Leverage = state.TotalEquity > 0
-                        ? state.ActiveOrders.Sum(o => o.Qty * allBars[o.Symbol][indices[o.Symbol]].Close) /
-                          state.TotalEquity
-                        : 0,
-                    IsKrach = dayRes.SystemicCrashActive,
-                    PositionCount = state.ActiveOrders.Count
-                });
-
-                if (dayRes.CircuitBreakerTriggered || dayRes.ProfitFloorTriggered) break;
+                return new MlofiMlPredictionData { PredictedLabel = true, Probability = 0.5f, Score = 0f };
             }
 
-            result.TotalEquity = state.TotalEquity;
-            result.FinalCash = state.Cash;
-            result.MaxDrawdown = state.MaxDrawdown;
-            result.TradeCount = tradeCount;
-            result.TotalReturn = (initialCapital > 0) ? (state.TotalEquity - initialCapital) / initialCapital : 0;
-
-            OnDebug?.Invoke(
-                $"[END] Simulation terminée. Equity: {result.TotalEquity:F0}, DD Max: {result.MaxDrawdown:P2}");
-
-            return result;
-        }
-
-        public EngineResult ProcessDay(DateTime today, CrashCatcherMstpConfiguration config,
-            CrashCatcherDailyState state, Dictionary<string, List<Bars>> allBars,
-            Dictionary<string, int> symbolIndices, List<string> currentUniverse, bool isSpyRegimeSafe,
-            List<string> systemicUniverse, Dictionary<string, string>? sectorMap = null)
-        {
-            EngineResult res = new EngineResult();
-
-            foreach (CrashCatcherOrder o in state.ActiveOrders)
-            {
-                if (symbolIndices.TryGetValue(o.Symbol, out int idx))
-                {
-                    double previousClose = o.CurrentPrice;
-                    double newClose = allBars[o.Symbol][idx].Close;
-
-                    if (previousClose > 0 && newClose > 0)
-                    {
-                        double ratio = newClose / previousClose;
-                        if (Math.Abs(ratio - 1.0) > 0.05)
-                        {
-                            double splitFactor = 1.0;
-                            if (Math.Abs(ratio - 2.0) < 0.1) splitFactor = 2.0;
-                            else if (Math.Abs(ratio - 3.0) < 0.1) splitFactor = 3.0;
-                            else if (Math.Abs(ratio - 4.0) < 0.1) splitFactor = 4.0;
-                            else if (Math.Abs(ratio - 1.5) < 0.1) splitFactor = 1.5;
-                            else if (Math.Abs(ratio - 0.5) < 0.05) splitFactor = 0.5;
-                            else if (Math.Abs(ratio - 0.333) < 0.05) splitFactor = 0.333;
-                            else if (Math.Abs(ratio - 0.25) < 0.05) splitFactor = 0.25;
-                            else if (Math.Abs(ratio - 0.1) < 0.05) splitFactor = 0.1;
-                            else if (Math.Abs(ratio - 0.2) < 0.05) splitFactor = 0.2;
-                            else if (Math.Abs(ratio - 20.0) < 1.0) splitFactor = 20.0;
-                            else if (Math.Abs(ratio - 1.333) < 0.05) splitFactor = 1.333;
-                            else if (Math.Abs(ratio - 0.666) < 0.05) splitFactor = 0.666;
-                            else if (Math.Abs(ratio - 1.666) < 0.05) splitFactor = 1.666;
-
-                            if (splitFactor != 1.0)
-                            {
-                                Console.WriteLine(
-                                    $"[SPLIT DETECTED] {o.Symbol} on {today:yyyy-MM-dd}: ratio={ratio:F4}, factor={splitFactor}. Adjusting position.");
-                                o.Qty = (o.Qty * splitFactor);
-                                o.EntryPrice /= splitFactor;
-                                o.HighPriceSinceEntry /= splitFactor;
-                                newClose = previousClose / splitFactor;
-                            }
-                        }
-                    }
-
-                    o.CurrentPrice = newClose;
-                    if (o.CurrentPrice > o.HighPriceSinceEntry) o.HighPriceSinceEntry = o.CurrentPrice;
-                }
-            }
-
-            res.SystemicCrashActive = DetectSystemicCrash(config, allBars, symbolIndices, systemicUniverse);
-            HandleRecoveryPhase(config, state, res.SystemicCrashActive);
-
-            if (CheckGlobalProtections(config, state, res, allBars, symbolIndices))
-            {
-                return res;
-            }
-
-            Dictionary<string, List<CrashCatcherOrder>> activeBySymbol = state.ActiveOrders.GroupBy(o => o.Symbol)
-                .ToDictionary(g => g.Key, g => g.ToList());
-
-            if (currentUniverse != null && currentUniverse.Count > 0)
-            {
-                ProcessExits(today, config, res, allBars, symbolIndices, activeBySymbol, currentUniverse);
-
-                double remainingExposure = 0;
-                foreach (CrashCatcherOrder o in state.ActiveOrders)
-                {
-                    if (res.Actions.Any(a => a.Symbol == o.Symbol && a.Type == ActionType.Liquidate)) continue;
-                    if (res.Actions.Any(a => a.TargetOrder == o && a.Type == ActionType.Sell)) continue;
-
-                    double qty = o.Qty;
-                    TradingAction? partialSellAction =
-                        res.Actions.FirstOrDefault(a => a.TargetOrder == o && a.Type == ActionType.PartialSell);
-                    if (partialSellAction != null)
-                    {
-                        qty -= partialSellAction.Quantity;
-                    }
-
-                    if (qty > 0)
-                    {
-                        remainingExposure += qty * o.CurrentPrice;
-                    }
-                }
-
-                double targetLev = config.LeverageMultiplier;
-                if (symbolIndices.TryGetValue("SPY", out int spyIdx) &&
-                    allBars.TryGetValue("SPY", out List<Bars>? spyBars))
-                {
-                    double spyAtr = GetAtr("SPY", spyBars, spyIdx);
-                    double spyPrice = spyBars[spyIdx].Close;
-                    double spyVolPct = spyAtr / spyPrice;
-                    double volMultiplier = (spyVolPct > 0) ? (config.VolatilityTarget / spyVolPct) : 1.0;
-                    volMultiplier = Math.Clamp(volMultiplier, config.VolatilityMinMultiplier, 1);
-                    targetLev *= volMultiplier;
-                }
-
-                if (state.RecoveryDaysRemaining > 0)
-                {
-                    targetLev *= config.RecoveryLeverageMultiplier;
-                }
-
-                double limit = config.UseNormalizedLeverage ? config.MaxLeverageLimit : (targetLev * 1.05);
-
-                if (state.TotalEquity > 0 && remainingExposure > state.TotalEquity * limit)
-                {
-                    double toReduce = remainingExposure - (state.TotalEquity * limit);
-                    List<(CrashCatcherOrder order, double remainingQty, double remainingExp)> candidates = new();
-                    foreach (CrashCatcherOrder o in state.ActiveOrders)
-                    {
-                        if (res.Actions.Any(a => a.Symbol == o.Symbol && a.Type == ActionType.Liquidate)) continue;
-                        if (res.Actions.Any(a => a.TargetOrder == o && a.Type == ActionType.Sell)) continue;
-
-                        double qty = o.Qty;
-                        TradingAction? partialSellAction =
-                            res.Actions.FirstOrDefault(a => a.TargetOrder == o && a.Type == ActionType.PartialSell);
-                        if (partialSellAction != null)
-                        {
-                            qty -= partialSellAction.Quantity;
-                        }
-
-                        if (qty > 0.0001)
-                        {
-                            candidates.Add((o, qty, qty * o.CurrentPrice));
-                        }
-                    }
-
-                    double totalCandidateExposure = candidates.Sum(c => c.remainingExp);
-                    if (totalCandidateExposure > 0)
-                    {
-                        foreach (var c in candidates)
-                        {
-                            double ratio = c.remainingExp / totalCandidateExposure;
-                            double amtToSell = toReduce * ratio;
-                            double qtyToSell = amtToSell / c.order.CurrentPrice;
-
-                            if (!config.UseFractionalShares)
-                            {
-                                qtyToSell = Math.Ceiling(qtyToSell);
-                            }
-
-                            if (qtyToSell > c.remainingQty)
-                            {
-                                qtyToSell = c.remainingQty;
-                                amtToSell = qtyToSell * c.order.CurrentPrice;
-                            }
-
-                            if (qtyToSell > 0.0001)
-                            {
-                                res.Actions.Add(new TradingAction
-                                {
-                                    Symbol = c.order.Symbol,
-                                    Type = ActionType.PartialSell,
-                                    Price = c.order.CurrentPrice,
-                                    Quantity = qtyToSell,
-                                    Amount = amtToSell,
-                                    Reason = config.UseNormalizedLeverage ? "DeleverageDrawdown" : "DeleverageStandard",
-                                    TargetOrder = c.order
-                                });
-                            }
-                        }
-                    }
-                }
-
-                if (!res.SystemicCrashActive && isSpyRegimeSafe)
-                {
-                    ProcessEntries(today, config, state, res, allBars, symbolIndices, currentUniverse, activeBySymbol,
-                        sectorMap);
-                }
-            }
-
-            if (state.ActiveOrders.Count == 0 && state.RecoveryDaysRemaining == 0 &&
-                !res.CircuitBreakerTriggered && !res.SystemicCrashActive)
-            {
-                bool hadLiquidations = res.Actions.Any(a => a.Type == ActionType.Liquidate);
-                if (hadLiquidations)
-                {
-                    state.RecoveryDaysRemaining = config.RecoveryDurationDays;
-                }
-            }
-
-            return res;
-        }
-
-        public void UpdateDailyMetrics(CrashCatcherDailyState state, DateTime date, double prevNav, bool systemicActive,
-            int buys, int sells)
-        {
-            state.Date = DateTime.SpecifyKind(date.Date, DateTimeKind.Utc);
-            state.SystemicCrashActive = systemicActive;
-            state.DailyReturn = (prevNav > 0) ? (state.TotalEquity - prevNav) / prevNav : 0;
-            state.BuyActionsToday = buys;
-            state.SellActionsToday = sells;
-            state.UpdatedAt = DateTime.UtcNow;
-
-            if (state.TotalEquity > state.PeakEquity)
-            {
-                state.PeakEquity = state.TotalEquity;
-            }
-
-            double dd = (state.PeakEquity > 0) ? (state.TotalEquity - state.PeakEquity) / state.PeakEquity : 0;
-            state.CurrentDrawdownPct = dd * 100;
-            state.MaxDrawdown = Math.Min(state.MaxDrawdown, dd);
-
-            double expo = state.ActiveOrders.Sum(o => o.Qty * o.CurrentPrice);
-            state.TotalExposure = expo;
-            state.TotalEquity = state.Cash + expo;
-            state.ActiveSymbolCount = state.ActiveOrders.Select(o => o.Symbol).Distinct().Count();
-            state.UnrealizedPnl = state.ActiveOrders.Sum(o => (o.CurrentPrice - o.EntryPrice) * o.Qty);
-            state.EffectiveLeverage = (state.TotalEquity > 0) ? expo / state.TotalEquity : 0;
-        }
-
-        private bool DetectSystemicCrash(CrashCatcherMstpConfiguration config, Dictionary<string, List<Bars>> all,
-            Dictionary<string, int> idxs, List<string> pool)
-        {
-            int validDataCount = 0;
-            int crashes = 0;
-
-            foreach (string s in pool)
-            {
-                if (idxs.TryGetValue(s, out int idx) && idx >= config.MomentumLookback)
-                {
-                    validDataCount++;
-                    if (IsMomentumCrash(s, config.MomentumLookback, config.SystemicMomentumFactor, all, idxs))
-                    {
-                        crashes++;
-                    }
-                }
-            }
-
-            if (validDataCount == 0) return false;
-            return (double) crashes / validDataCount >= config.SystemicCrashThreshold;
-        }
-
-        private void HandleRecoveryPhase(CrashCatcherMstpConfiguration config, CrashCatcherDailyState state,
-            bool isKrach)
-        {
-            if (state.SystemicCrashActive && !isKrach) state.RecoveryDaysRemaining = config.RecoveryDurationDays;
-            else if (state.RecoveryDaysRemaining > 0) state.RecoveryDaysRemaining--;
-            state.SystemicCrashActive = isKrach;
-        }
-
-        private bool CheckGlobalProtections(CrashCatcherMstpConfiguration config, CrashCatcherDailyState state,
-            EngineResult result, Dictionary<string, List<Bars>> all, Dictionary<string, int> idxs)
-        {
-            if (config.CircuitBreakerPct > 0 && state.PeakEquity > 0 &&
-                state.TotalEquity <= state.PeakEquity * config.CircuitBreakerPct)
-            {
-                result.CircuitBreakerTriggered = true;
-                LiquidateAll(result, all, idxs, state, "CircuitBreaker");
-                state.RecoveryDaysRemaining = config.RecoveryDurationDays;
-                state.PeakEquity = state.TotalEquity;
-                return false;
-            }
-
-            if (config.TrailingEquityStopPct > 0 && state.PeakEquity > 0 &&
-                state.TotalEquity <= state.PeakEquity * (1.0 - config.TrailingEquityStopPct))
-            {
-                LiquidateAll(result, all, idxs, state, "TrailingEquityStop");
-                state.RecoveryDaysRemaining = config.RecoveryDurationDays;
-                state.PeakEquity = state.TotalEquity;
-                return true;
-            }
-
-            return false;
-        }
-
-        private void ProcessExits(DateTime day, CrashCatcherMstpConfiguration config, EngineResult res,
-            Dictionary<string, List<Bars>> all, Dictionary<string, int> idxs,
-            Dictionary<string, List<CrashCatcherOrder>> active, List<string> currentUniverse)
-        {
-            HashSet<string> topSymbols =
-                currentUniverse?.Take(config.UniverseSize).ToHashSet() ?? new HashSet<string>();
-
-            foreach (KeyValuePair<string, List<CrashCatcherOrder>> kvp in active)
-            {
-                string sym = kvp.Key;
-                if (!idxs.TryGetValue(sym, out int idx)) continue;
-                double price = all[sym][idx].Close;
-                List<CrashCatcherOrder> orders = kvp.Value;
-                double atr = GetAtr(sym, all[sym], idx);
-
-                foreach (CrashCatcherOrder o in orders)
-                {
-                    o.HighPriceSinceEntry = Math.Max(o.HighPriceSinceEntry, price);
-                    double peak = o.HighPriceSinceEntry;
-
-                    bool exitSl = price <= (o.EntryPrice * (1 - config.SymbolStopLossPct));
-
-                    bool exitTs = config.AtrTrailingStopMultiplier > 0 &&
-                                  price <= (peak - (atr * config.AtrTrailingStopMultiplier));
-
-                    double tpThreshold = config.TargetProfitFinalPct;
-                    if (config.ExitTrancheAtStageThreshold && config.Stages is {Count: > 0})
-                    {
-                        int trancheIdx = Math.Min(o.TrancheIndex, config.Stages.Count - 1);
-                        tpThreshold = config.Stages[trancheIdx].ProfitThresholdPct;
-                    }
-
-                    bool exitTpFinal = price >= (o.EntryPrice * (1 + tpThreshold));
-
-                    bool exitRotation = !config.DisableRotationExit && !topSymbols.Contains(sym);
-
-                    if (exitSl || exitTs || exitTpFinal || exitRotation)
-                    {
-                        string reason = exitSl ? "SL" : (exitTs ? "TS" : (exitTpFinal ? "TPFinal" : "Rotation"));
-                        res.Actions.Add(new TradingAction
-                        {
-                            Symbol = sym,
-                            Type = ActionType.Sell,
-                            Price = price,
-                            Quantity = o.Qty,
-                            Amount = o.Qty * price,
-                            Reason = reason,
-                            TargetOrder = o
-                        });
-                    }
-                    else if (!config.ExitTrancheAtStageThreshold && config.Stages != null && config.Stages.Count > 0)
-                    {
-                        for (int i = 0; i < config.Stages.Count; i++)
-                        {
-                            if (i > (o.LastStageReached - 1) &&
-                                price >= o.EntryPrice * (1 + config.Stages[i].ProfitThresholdPct))
-                            {
-                                double qtyToSell = config.UseFractionalShares
-                                    ? o.Qty * config.Stages[i].SellRatio
-                                    : Math.Floor(o.Qty * config.Stages[i].SellRatio);
-                                if (config.UseFractionalShares ? qtyToSell > 0 : qtyToSell >= 1)
-                                {
-                                    res.Actions.Add(new TradingAction
-                                    {
-                                        Symbol = sym, Type = ActionType.PartialSell,
-                                        Price = price, Quantity = qtyToSell,
-                                        Reason = $"MSTP_{i + 1}", TargetOrder = o,
-                                        NewStage = i + 1
-                                    });
-                                }
-                                else
-                                {
-                                    o.LastStageReached = i + 1;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        private void ProcessEntries(DateTime day, CrashCatcherMstpConfiguration config, CrashCatcherDailyState state,
-            EngineResult res, Dictionary<string, List<Bars>> all, Dictionary<string, int> idxs, List<string> universe,
-            Dictionary<string, List<CrashCatcherOrder>> active, Dictionary<string, string>? sectorMap = null)
-        {
-            if (state.TotalEquity <= 0) return;
-
-            double currentLev = config.LeverageMultiplier;
-            double spyAtr = GetAtr("SPY", all["SPY"], idxs["SPY"]);
-            double spyPrice = all["SPY"][idxs["SPY"]].Close;
-            double spyVolPct = spyAtr / spyPrice;
-            double volMultiplier = (spyVolPct > 0) ? (config.VolatilityTarget / spyVolPct) : 1.0;
-            volMultiplier = Math.Clamp(volMultiplier, config.VolatilityMinMultiplier, 1);
-            currentLev *= volMultiplier;
-
-            if (state.RecoveryDaysRemaining > 0)
-            {
-                currentLev *= config.RecoveryLeverageMultiplier;
-            }
-
-            if (config.MaintenanceMarginPct > 0)
-            {
-                double marginLimit = 1.0 / config.MaintenanceMarginPct;
-                if (currentLev > marginLimit)
-                {
-                    currentLev = marginLimit;
-                }
-            }
-
-            double totalWeightPerSymbol = 0;
-            for (int i = 0; i < config.MaxTranchesPerSymbol; i++)
-            {
-                if (config.TrancheWeights != null && config.TrancheWeights.Count > i)
-                    totalWeightPerSymbol += config.TrancheWeights[i];
-                else
-                    totalWeightPerSymbol += Math.Pow(config.ScalingRatio, i);
-            }
-
-            double baseRateRaw = currentLev / (config.UniverseSize * totalWeightPerSymbol);
-
-            double exposureAfterSells = 0;
-            foreach (CrashCatcherOrder o in state.ActiveOrders)
-            {
-                if (res.Actions.Any(a => a.Symbol == o.Symbol && a.Type == ActionType.Liquidate)) continue;
-                if (res.Actions.Any(a => a.TargetOrder == o && a.Type == ActionType.Sell)) continue;
-
-                double qty = o.Qty;
-                TradingAction? partialSellAction =
-                    res.Actions.FirstOrDefault(a => a.TargetOrder == o && a.Type == ActionType.PartialSell);
-                if (partialSellAction != null)
-                {
-                    qty -= partialSellAction.Quantity;
-                }
-
-                if (qty > 0)
-                {
-                    exposureAfterSells += qty * o.CurrentPrice;
-                }
-            }
-
-            double remainingBuyingPower = (currentLev * state.TotalEquity) - exposureAfterSells;
-
-            HashSet<string> topSymbols = universe.Take(config.UniverseSize).ToHashSet();
-            HashSet<string> heldSymbols = state.ActiveOrders.Select(o => o.Symbol).Distinct().ToHashSet();
-
-            foreach (string sym in topSymbols)
-            {
-                if (state.DynamicBlacklist.TryGetValue(sym, out DateTime bEnd) && day < bEnd) continue;
-                if (!heldSymbols.Contains(sym) && heldSymbols.Count < config.UniverseSize)
-                {
-                    if (remainingBuyingPower <= 0) break;
-
-                    if (!idxs.TryGetValue(sym, out int idx)) continue;
-                    double price = all[sym][idx].Close;
-
-                    if (idx >= config.WindowSize)
-                    {
-                        double peak = 0;
-                        for (int k = 0; k < config.WindowSize; k++)
-                        {
-                            if (all[sym][idx - k].High > peak) peak = all[sym][idx - k].High;
-                        }
-
-                        double requiredDrop = state.RecoveryDaysRemaining > 0
-                            ? 0.0
-                            : config.InitialDropPct;
-
-                        if (state.RecoveryDaysRemaining <= 0 && config.UseAtrScaledDrop)
-                        {
-                            double atr = GetAtr(sym, all[sym], idx);
-                            double atrPct = atr / price;
-                            requiredDrop = config.InitialDropPct * (atrPct / config.ReferenceAtrPct) * config.DropAtrFactor;
-                        }
-
-                        if (price > peak * (1 - requiredDrop))
-                        {
-                            continue;
-                        }
-                    }
-
-                    if (sectorMap != null && sectorMap.TryGetValue(sym, out string? sector))
-                    {
-                        int sectorCount = 0;
-                        foreach (var symHeld in heldSymbols)
-                        {
-                            if (sectorMap.TryGetValue(symHeld, out string? sHeld) && sHeld == sector)
-                            {
-                                sectorCount++;
-                            }
-                        }
-                    }
-
-                    if (config.MaxCorrelationThreshold < 1.0 && heldSymbols.Count > 0)
-                    {
-                        bool correlationTooHigh = false;
-                        foreach (var symHeld in heldSymbols)
-                        {
-                            double corr = CalculateCorrelation(sym, symHeld, config.CorrelationLookback, all, idxs);
-                            if (corr > config.MaxCorrelationThreshold)
-                            {
-                                correlationTooHigh = true;
-                                break;
-                            }
-                        }
-
-                        if (correlationTooHigh)
-                        {
-                            continue;
-                        }
-                    }
-
-                    double weight = (config.TrancheWeights != null && config.TrancheWeights.Count > 0)
-                        ? config.TrancheWeights[0]
-                        : 1.0;
-                    double amt = (state.TotalEquity * baseRateRaw) * weight;
-
-                    double allowedAmt = Math.Min(amt, remainingBuyingPower);
-
-                    if (!config.UseFractionalShares && price > state.TotalEquity)
-                    {
-                        continue;
-                    }
-                    if (!config.UseFractionalShares && allowedAmt < price)
-                    {
-                        continue;
-                    }
-
-                    double qty = config.UseFractionalShares ? allowedAmt / price : Math.Floor(allowedAmt / price);
-                    if (qty <= 0) continue;
-
-                    res.Actions.Add(new TradingAction
-                    {
-                        Symbol = sym, Type = ActionType.Buy,
-                        Price = price, Amount = qty * price,
-                        Quantity = qty,
-                        Reason = "Entry1",
-                        TrancheIndex = 0
-                    });
-                    heldSymbols.Add(sym);
-                    remainingBuyingPower -= qty * price;
-                }
-            }
-
-            Dictionary<string, List<CrashCatcherOrder>> activeBySymbol =
-                state.ActiveOrders.GroupBy(o => o.Symbol).ToDictionary(g => g.Key, g => g.ToList());
-            foreach (KeyValuePair<string, List<CrashCatcherOrder>> kvp in activeBySymbol)
-            {
-                if (remainingBuyingPower <= 0) break;
-
-                string sym = kvp.Key;
-                if (!idxs.TryGetValue(sym, out int idx)) continue;
-                double price = all[sym][idx].Close;
-                List<CrashCatcherOrder> orders = kvp.Value;
-
-                int maxTrancheIndex = orders.Max(o => o.TrancheIndex);
-                int nextTrancheIndex = maxTrancheIndex + 1;
-
-                if (nextTrancheIndex < config.MaxTranchesPerSymbol)
-                {
-                    double lastPrice = orders.Last().EntryPrice;
-                    DateTime lastEntryDate = orders.Last().EntryDate;
-
-                    int daysSinceLastTranche;
-                    int lastEntryIdx = all[sym].FindLastIndex(b => b.Timestamp.Date <= lastEntryDate.Date);
-                    if (lastEntryIdx != -1)
-                    {
-                        daysSinceLastTranche = idx - lastEntryIdx;
-                    }
-                    else
-                    {
-                        daysSinceLastTranche = (day.Date - lastEntryDate.Date).Days;
-                    }
-
-                    double spacing = config.GridSpacingPct;
-                    if (config.UseAtrScaledGrid)
-                    {
-                        double atr = GetAtr(sym, all[sym], idx);
-                        double atrPct = atr / price;
-                        spacing = config.GridSpacingPct * (atrPct / config.ReferenceAtrPct) * config.GridAtrFactor;
-                    }
-
-                    bool canDca = price <= lastPrice * (1 - spacing) &&
-                                  topSymbols.Contains(sym) &&
-                                  daysSinceLastTranche >= config.MinDaysBetweenTranches;
-
-                    if (canDca)
-                    {
-                        double weight =
-                            (config.TrancheWeights != null && config.TrancheWeights.Count > nextTrancheIndex)
-                                ? config.TrancheWeights[nextTrancheIndex]
-                                : Math.Pow(config.ScalingRatio, nextTrancheIndex);
-
-                        double amt = (state.TotalEquity * baseRateRaw) * weight;
-
-                        double allowedAmt = Math.Min(amt, remainingBuyingPower);
-
-                        if (!config.UseFractionalShares && price > state.TotalEquity)
-                        {
-                            continue;
-                        }
-                        if (!config.UseFractionalShares && allowedAmt < price)
-                        {
-                            continue;
-                        }
-
-                        double qty = config.UseFractionalShares ? allowedAmt / price : Math.Floor(allowedAmt / price);
-                        if (qty <= 0) continue;
-
-                        res.Actions.Add(new TradingAction
-                        {
-                            Symbol = sym, Type = ActionType.Buy,
-                            Price = price, Amount = qty * price,
-                            Quantity = qty,
-                            Reason = $"DCA{nextTrancheIndex + 1}",
-                            TrancheIndex = nextTrancheIndex
-                        });
-                        remainingBuyingPower -= qty * price;
-                    }
-                }
-            }
-        }
-
-        public void ApplyActions(CrashCatcherDailyState state, EngineResult result, DateTime date, double slippage)
-        {
-            state.ClosedToday ??= new List<CrashCatcherClosedOrder>();
-            state.ClosedToday.Clear();
-            state.DailyRealizedPnl = 0;
-
-            foreach (TradingAction act in result.Actions)
-            {
-                if (act.Type == ActionType.Liquidate)
-                {
-                    List<CrashCatcherOrder> oList = state.ActiveOrders.Where(o => o.Symbol == act.Symbol).ToList();
-                    foreach (var o in oList)
-                    {
-                        double exitCash = o.Qty * act.Price * (1 - slippage);
-                        double entryCost = o.Qty * o.EntryPrice;
-                        double realized = exitCash - entryCost;
-
-                        state.ClosedToday.Add(new CrashCatcherClosedOrder
-                        {
-                            Symbol = o.Symbol, Qty = o.Qty, EntryPrice = o.EntryPrice, ExitPrice = act.Price,
-                            EntryDate = o.EntryDate, ExitDate = date, RealizedPnl = realized,
-                            GainPct = (act.Price / o.EntryPrice) - 1, ExitReason = act.Reason
-                        });
-
-                        state.Cash += exitCash;
-                        state.DailyRealizedPnl += realized;
-                        state.TotalRealizedPnl += realized;
-                        state.ActiveOrders.Remove(o);
-                    }
-                }
-                else if (act.Type == ActionType.Sell)
-                {
-                    if (act.TargetOrder != null && state.ActiveOrders.Contains(act.TargetOrder))
-                    {
-                        double exitCash = act.TargetOrder.Qty * act.Price * (1 - slippage);
-                        double entryCost = act.TargetOrder.Qty * act.TargetOrder.EntryPrice;
-                        double realized = exitCash - entryCost;
-
-                        state.ClosedToday.Add(new CrashCatcherClosedOrder
-                        {
-                            Symbol = act.Symbol, Qty = act.TargetOrder.Qty, EntryPrice = act.TargetOrder.EntryPrice,
-                            ExitPrice = act.Price, EntryDate = act.TargetOrder.EntryDate, ExitDate = date,
-                            RealizedPnl = realized, GainPct = (act.Price / act.TargetOrder.EntryPrice) - 1,
-                            ExitReason = act.Reason
-                        });
-
-                        state.Cash += exitCash;
-                        state.DailyRealizedPnl += realized;
-                        state.TotalRealizedPnl += realized;
-                        state.ActiveOrders.Remove(act.TargetOrder);
-                    }
-                }
-                else if (act.Type == ActionType.PartialSell)
-                {
-                    if (act.TargetOrder != null && state.ActiveOrders.Contains(act.TargetOrder))
-                    {
-                        double soldQty = act.Quantity;
-                        double exitCash = soldQty * act.Price * (1 - slippage);
-                        double entryCost = soldQty * act.TargetOrder.EntryPrice;
-                        double realized = exitCash - entryCost;
-
-                        state.ClosedToday.Add(new CrashCatcherClosedOrder
-                        {
-                            Symbol = act.Symbol, Qty = soldQty, EntryPrice = act.TargetOrder.EntryPrice,
-                            ExitPrice = act.Price, EntryDate = act.TargetOrder.EntryDate, ExitDate = date,
-                            RealizedPnl = realized, GainPct = (act.Price / act.TargetOrder.EntryPrice) - 1,
-                            ExitReason = act.Reason
-                        });
-
-                        act.TargetOrder.Qty -= soldQty;
-                        if (act.NewStage.HasValue)
-                        {
-                            act.TargetOrder.LastStageReached =
-                                Math.Max(act.TargetOrder.LastStageReached, act.NewStage.Value);
-                        }
-
-                        state.Cash += exitCash;
-                        state.DailyRealizedPnl += realized;
-                        state.TotalRealizedPnl += realized;
-                    }
-                }
-                else if (act.Type == ActionType.Buy)
-                {
-                    state.Cash -= act.Quantity * act.Price * (1 + slippage);
-                    state.ActiveOrders.Add(new CrashCatcherOrder
-                    {
-                        Symbol = act.Symbol, Qty = act.Quantity, EntryPrice = act.Price,
-                        HighPriceSinceEntry = act.Price, EntryDate = date, CurrentPrice = act.Price,
-                        TrancheIndex = act.TrancheIndex
-                    });
-                    state.LastEntryDates[act.Symbol] = date;
-                }
-            }
-
-            state.ActiveOrders.RemoveAll(o => o.Qty <= 0.0001);
-            state.RealizedEquity = state.InitialCash + state.TotalRealizedPnl;
-
-            double mtm = state.ActiveOrders.Sum(o => o.Qty * o.CurrentPrice);
-            state.TotalEquity = state.Cash + mtm;
-        }
-
-        private bool IsMomentumCrash(string s, int lookback, double thr, Dictionary<string, List<Bars>> all,
-            Dictionary<string, int> idxs)
-        {
-            if (!idxs.TryGetValue(s, out int idx) || idx < lookback)
-            {
-                return false;
-            }
-
-            Bars firstBar = all[s][idx];
-            Bars secondBar = all[s][idx - lookback];
-            return firstBar.Close <= secondBar.Close * thr;
-        }
-
-        private double GetAtr(string sym, List<Bars> bars, int idx)
-        {
-            if (idx < 14) return bars[idx].Close * 0.05;
-            double sum = 0;
-            for (int i = 0; i < 14; i++)
-            {
-                Bars bar = bars[idx - i];
-                Bars prev = bars[idx - i - 1];
-                double tr = Math.Max(bar.High - bar.Low,
-                    Math.Max(Math.Abs(bar.High - prev.Close),
-                        Math.Abs(bar.Low - prev.Close)));
-                sum += tr;
-            }
-
-            return sum / 14;
-        }
-
-        private void LiquidateAll(EngineResult res, Dictionary<string, List<Bars>> all, Dictionary<string, int> idxs,
-            CrashCatcherDailyState st, string r)
-        {
-            foreach (IGrouping<string, CrashCatcherOrder> g in st.ActiveOrders.GroupBy(o => o.Symbol))
-            {
-                if (idxs.TryGetValue(g.Key, out int idx))
-                    res.Actions.Add(new TradingAction
-                    {
-                        Symbol = g.Key, Type = ActionType.Liquidate, Price = all[g.Key][idx].Close, Reason = r,
-                        Quantity = g.Sum(o => o.Qty)
-                    });
-            }
-        }
-
-        private double CalculateCorrelation(string s1, string s2, int lookback, Dictionary<string, List<Bars>> all,
-            Dictionary<string, int> idxs)
-        {
-            if (!idxs.TryGetValue(s1, out int i1) || !idxs.TryGetValue(s2, out int i2) || i1 < lookback ||
-                i2 < lookback)
-                return 0;
-
-            double[] r1 = new double[lookback];
-            double[] r2 = new double[lookback];
-
-            for (int k = 0; k < lookback; k++)
-            {
-                r1[k] = (all[s1][i1 - k].Close - all[s1][i1 - k - 1].Close) / all[s1][i1 - k - 1].Close;
-                r2[k] = (all[s2][i2 - k].Close - all[s2][i2 - k - 1].Close) / all[s2][i2 - k - 1].Close;
-            }
-
-            double avg1 = r1.Average();
-            double avg2 = r2.Average();
-
-            double sumSq1 = 0, sumSq2 = 0, sumCo = 0;
-            for (int k = 0; k < lookback; k++)
-            {
-                double d1 = r1[k] - avg1;
-                double d2 = r2[k] - avg2;
-                sumSq1 += d1 * d1;
-                sumSq2 += d2 * d2;
-                sumCo += d1 * d2;
-            }
-
-            double den = Math.Sqrt(sumSq1 * sumSq2);
-            return den == 0 ? 0 : sumCo / den;
+            return _predictionEngine.Predict(sample);
         }
     }
 
     // ==========================================================================================
-    // CCTRADER ROBOT MAIN CLASS
+    // 2. CTRADER AUTOMATE BOT : SPY MLOFI FTMO SCALPER WITH LIVE ML TRAINING
     // ==========================================================================================
-    [Robot(AccessRights = AccessRights.FullAccess, AddIndicators = true)]
+    [Robot(TimeZone = TimeZones.UTC, AccessRights = AccessRights.FullAccess)]
     public class UnicornTraiding : Robot
     {
-        [Parameter("Mongo Conn String", Group = "MongoDB", DefaultValue = "mongodb://dataestimate:OtG4j93VHWsQLbXZYCai2fLjqnohmn@31.37.184.68:27017/?directConnection=true")]
-        public string MongoConnectionString { get; set; }
+        // === PARAMÈTRES ENTRÉE ===
+        [Parameter("Symbol SPY Target", Group = "1. Target Setup", DefaultValue = "SPY")]
+        public string TargetSymbol { get; set; } = "SPY";
 
-        [Parameter("Database Name", Group = "MongoDB", DefaultValue = "SwingTradingAccumulation")]
-        public string DatabaseName { get; set; }
+        [Parameter("Capital Initial FTMO ($)", Group = "2. Risk Management FTMO", DefaultValue = 100000.0)]
+        public double InitialCapital { get; set; } = 100000.0;
 
-        [Parameter("Collection Suffix", Group = "MongoDB", DefaultValue = "_cTrader_LIVE")]
-        public string CollectionSuffix { get; set; }
+        [Parameter("Risque Par Trade (%)", Group = "2. Risk Management FTMO", DefaultValue = 0.30)]
+        public double RiskPerTradePct { get; set; } = 0.30;
 
-        [Parameter("Position Label", Group = "Strategy", DefaultValue = "UnicornMstp")]
-        public string PositionLabel { get; set; }
+        [Parameter("Disjoncteur Jour FTMO (%)", Group = "2. Risk Management FTMO", DefaultValue = 2.5)]
+        public double MaxDailyLossPct { get; set; } = 2.5;
 
-        [Parameter("Use FTMO Config", Group = "Strategy", DefaultValue = true)]
-        public bool UseFtmoConfig { get; set; }
+        [Parameter("Seuil Réduction DD FTMO (%)", Group = "2. Risk Management FTMO", DefaultValue = 5.0)]
+        public double MaxDrawdownPct { get; set; } = 5.0;
 
-        [Parameter("Trigger Hour EST (MOC)", Group = "Schedule", DefaultValue = 15)]
-        public int TriggerHour { get; set; }
+        [Parameter("Multiplicateur StopLoss (x ATR)", Group = "3. Bracket Orders", DefaultValue = 0.8)]
+        public double SlAtrMultiplier { get; set; } = 0.8;
 
-        [Parameter("Trigger Minute EST (MOC)", Group = "Schedule", DefaultValue = 50)]
-        public int TriggerMinute { get; set; }
+        [Parameter("Multiplicateur TakeProfit (x ATR)", Group = "3. Bracket Orders", DefaultValue = 1.6)]
+        public double TpAtrMultiplier { get; set; } = 1.6;
 
-        [Parameter("Symbol Prefix", Group = "Broker Settings", DefaultValue = "")]
-        public string SymbolPrefix { get; set; }
+        [Parameter("Activer Apprentissage ML FastTree", Group = "4. Machine Learning", DefaultValue = true)]
+        public bool EnableMlTraining { get; set; } = true;
 
-        [Parameter("Symbol Suffix", Group = "Broker Settings", DefaultValue = "")]
-        public string SymbolSuffix { get; set; }
+        [Parameter("Nombre de Barres Entraînement", Group = "4. Machine Learning", DefaultValue = 15000)]
+        public int TrainingHistoryBars { get; set; } = 15000;
 
-        [Parameter("SPY Symbol Override", Group = "Broker Settings", DefaultValue = "SPY")]
-        public string SpySymbolOverride { get; set; }
+        [Parameter("Alpaca Key ID (Optionnel)", Group = "5. Alpaca Historical Data", DefaultValue = "")]
+        public string AlpacaKeyId { get; set; } = "";
 
-        [Parameter("Alpaca Key ID", Group = "Alpaca API", DefaultValue = "")]
-        public string AlpacaKeyId { get; set; }
+        [Parameter("Alpaca Secret Key (Optionnel)", Group = "5. Alpaca Historical Data", DefaultValue = "")]
+        public string AlpacaSecretKey { get; set; } = "";
 
-        [Parameter("Alpaca Secret Key", Group = "Alpaca API", DefaultValue = "")]
-        public string AlpacaSecretKey { get; set; }
+        [Parameter("Alpaca Feed", Group = "5. Alpaca Historical Data", DefaultValue = "sip")]
+        public string AlpacaFeed { get; set; } = "sip";
 
-        [Parameter("Alpaca Data URL", Group = "Alpaca API", DefaultValue = "https://data.alpaca.markets/v2/")]
-        public string AlpacaDataUrl { get; set; }
-
-        [Parameter("Alpaca Feed", Group = "Alpaca API", DefaultValue = "sip")]
-        public string AlpacaFeed { get; set; }
-
-        private IMongoDatabase _database;
-        private IMongoCollection<BsonDocument> _universeHistoryCollection;
-        private IMongoCollection<BsonDocument> _assetInfoCollection;
-        private IMongoCollection<CrashCatcherDailyState> _stateCollection;
-
-        private bool _mocProcessedForToday = false;
-        private DateTime _lastResetDate = DateTime.MinValue;
-        private DateTime _lastHeartbeatUtc = DateTime.MinValue;
-        private readonly CrashCatcherMstpEngine _engine = new();
-
-        private readonly HashSet<string> _availableBrokerSymbols = new(StringComparer.OrdinalIgnoreCase);
-
-        private static readonly TimeZoneInfo EasternTimeZone = GetEasternTimeZone();
-
-        private static TimeZoneInfo GetEasternTimeZone()
-        {
-            try
-            {
-                return TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
-            }
-            catch
-            {
-                return TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
-            }
-        }
-
-        private static DateTime GetEasternNow()
-        {
-            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, EasternTimeZone);
-        }
+        // === ÉTAT INTERNE & ENGINES ===
+        private MlofiMlPredictorEngine _mlPredictor = null!;
+        private double _dailyStartEquity;
+        private DateTime _currentDay = DateTime.MinValue;
+        private double _peakEquity;
 
         protected override void OnStart()
         {
-            Print("[UnicornTrading cTrader] Initializing...");
+            Print("==========================================================================");
+            Print($"🚀 DEMARRAGE BOT FTMO MLOFI SCALPER SPY (cTrader Automate)");
+            Print($"Target: {TargetSymbol} | Capital: ${InitialCapital:N0} | Risk/Trade: {RiskPerTradePct}% | Daily Breaker: {MaxDailyLossPct}%");
+            if (!string.IsNullOrEmpty(AlpacaKeyId)) Print("📡 Données Alpaca API activées pour l'entraînement ML !");
+            Print("==========================================================================");
 
-            // Cache available symbol names from broker
-            try
+            _dailyStartEquity = Account.Balance;
+            _peakEquity = Account.Balance;
+            _mlPredictor = new MlofiMlPredictorEngine();
+
+            if (EnableMlTraining)
             {
-                foreach (var symbol in Symbols)
-                {
-                    if (!string.IsNullOrEmpty(symbol))
-                    {
-                        // Ignore retired/removed/expired/close-only symbols
-                        if (symbol.Contains("removed", StringComparison.OrdinalIgnoreCase) ||
-                            symbol.Contains("delisted", StringComparison.OrdinalIgnoreCase) ||
-                            symbol.Contains("expired", StringComparison.OrdinalIgnoreCase) ||
-                            symbol.Contains("close", StringComparison.OrdinalIgnoreCase) ||
-                            symbol.Contains("only", StringComparison.OrdinalIgnoreCase))
-                        {
-                            continue;
-                        }
-                        _availableBrokerSymbols.Add(symbol);
-                    }
-                }
-                Print($"[UnicornTrading cTrader] Loaded {_availableBrokerSymbols.Count} available symbols from broker.");
-                
-                // Print any matching S&P 500 CFD candidates for verification
-                var candidates = _availableBrokerSymbols.Where(s => s.Contains("500") || s.Contains("SPX", StringComparison.OrdinalIgnoreCase)).ToList();
-                Print("[UnicornTrading cTrader] S&P 500 candidates found: " + string.Join(", ", candidates));
-            }
-            catch (Exception ex)
-            {
-                Print("[UnicornTrading cTrader] Failed to cache broker symbols: " + ex.Message);
-            }
-
-            try
-            {
-                var client = new MongoClient(MongoConnectionString);
-                _database = client.GetDatabase(DatabaseName);
-                _universeHistoryCollection = _database.GetCollection<BsonDocument>("UnicornUniverseHistory");
-                _assetInfoCollection = _database.GetCollection<BsonDocument>("AssetInformation");
-                _stateCollection = _database.GetCollection<CrashCatcherDailyState>("CrashCatcherDailyState" + CollectionSuffix);
-
-                Print("[UnicornTrading cTrader] Connected to MongoDB successfully.");
-            }
-            catch (Exception ex)
-            {
-                Print("[UnicornTrading cTrader] MongoDB connection failed: " + ex.Message);
-            }
-
-            // Perform startup verification checks
-            PerformStartupVerification();
-
-            // Start 10-second scheduler timer
-            Timer.Start(TimeSpan.FromSeconds(10));
-        }
-
-        protected override void OnTimer()
-        {
-            try
-            {
-                var nowEst = GetEasternNow();
-
-                // Heartbeat every 5 minutes
-                if (DateTime.UtcNow - _lastHeartbeatUtc >= TimeSpan.FromMinutes(5))
-                {
-                    _lastHeartbeatUtc = DateTime.UtcNow;
-                    Print(string.Format("[UnicornTrading cTrader] Heartbeat - Machine Local: {0:HH:mm:ss} | Machine UTC: {1:HH:mm:ss} | Market EST: {2:HH:mm:ss}",
-                        DateTime.Now, DateTime.UtcNow, nowEst));
-                }
-
-                // Daily Reset of flags
-                if (nowEst.Date != _lastResetDate)
-                {
-                    _mocProcessedForToday = false;
-                    _lastResetDate = nowEst.Date;
-                    Print("[UnicornTrading cTrader] Resetting execution flags for date: " + nowEst.Date.ToString("yyyy-MM-dd"));
-                }
-
-                // Standard trading hours check: Mon-Fri only
-                if (nowEst.DayOfWeek == DayOfWeek.Saturday || nowEst.DayOfWeek == DayOfWeek.Sunday)
-                {
-                    return;
-                }
-
-                // Watcher Intraday (exécuté sur OnTimer chaque minute)
-                CheckIntradayRiskWatcher();
-
-                // Trigger MOC logic (typically 15:50 EST)
-                if (!_mocProcessedForToday && nowEst.Hour == TriggerHour && nowEst.Minute >= TriggerMinute && nowEst.Minute < TriggerMinute + 8)
-                {
-                    Print(string.Format("[UnicornTrading cTrader] MOC trigger reached. EST: {0:HH:mm:ss}", nowEst));
-                    _mocProcessedForToday = true;
-                    
-                    // Run MOC logic on the main thread (required for ExecuteMarketOrder/ClosePosition)
-                    BeginInvokeOnMainThread(() =>
-                    {
-                        try
-                        {
-                            ProcessMocLogic(nowEst.Date);
-                        }
-                        catch (Exception ex)
-                        {
-                            Print("[UnicornTrading cTrader] ProcessMocLogic Error: " + ex.Message);
-                        }
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                Print("[UnicornTrading cTrader] Scheduler Error: " + ex.Message);
+                RunTrainingPhase();
             }
         }
 
-        private void CheckIntradayRiskWatcher()
+        private List<SimpleBar> FetchBarsForTraining()
         {
-            try
-            {
-                CrashCatcherMstpConfiguration config = UseFtmoConfig ? CrashCatcherMstpConfiguration.GetFtmoConfiguration() : new CrashCatcherMstpConfiguration();
-
-                if (config.DailyDrawdownLimitPct <= 0 && config.TrailingEquityStopPct <= 0 && config.CircuitBreakerPct <= 0)
-                {
-                    return;
-                }
-
-                double currentEquity = Account.Equity;
-                if (currentEquity <= 0) return;
-
-                CrashCatcherDailyState latestState = GetLatestState();
-                double referenceEquity = latestState?.TotalEquity ?? currentEquity;
-                if (referenceEquity <= 0) referenceEquity = currentEquity;
-
-                double dailyChangePct = (currentEquity - referenceEquity) / referenceEquity;
-                double currentDropPct = -dailyChangePct; // Positif en cas de perte
-
-                double thresholdPct = config.DailyDrawdownLimitPct;
-
-                if (thresholdPct > 0)
-                {
-                    double distanceToThresholdPct = (thresholdPct - currentDropPct) * 100;
-                    string statusMsg = currentDropPct >= 0 
-                        ? string.Format("Perte Intraday: -{0:F2}%", currentDropPct * 100) 
-                        : string.Format("Gain Intraday: +{0:F2}%", -currentDropPct * 100);
-
-                    Print(string.Format("[cTrader Watcher] Equity: {0:N2} | {1} | Seuil Max: -{2:F2}% | Marge restante: {3:F2}%", 
-                        currentEquity, statusMsg, thresholdPct * 100, distanceToThresholdPct));
-
-                    // Liquidation forcée en cas de dépassement du seuil
-                    if (currentDropPct >= thresholdPct)
-                    {
-                        Print(string.Format("[cTrader Watcher EMERGENCY] Intraday Loss (-{0:F2}%) exceeded limit (-{1:F2}%)! Executing EMERGENCY LIQUIDATION.", 
-                            currentDropPct * 100, thresholdPct * 100));
-
-                        BeginInvokeOnMainThread(() =>
-                        {
-                            try
-                            {
-                                // FIX: on prend un snapshot des positions (FindAll retourne un tableau,
-                                // pas une référence live) pour éviter de modifier la collection
-                                // pendant qu'on l'itère avec ClosePosition().
-                                var positionsToClose = Positions.FindAll(PositionLabel);
-
-                                if (positionsToClose.Length == 0)
-                                {
-                                    Print("[cTrader Watcher EMERGENCY] Aucune position à fermer pour ce label.");
-                                }
-
-                                int closedCount = 0;
-                                int failedCount = 0;
-
-                                foreach (var position in positionsToClose)
-                                {
-                                    Print(string.Format("[cTrader Watcher EMERGENCY] Closing position {0} ({1})", position.Id, position.SymbolName));
-
-                                    var closeRes = ClosePosition(position);
-                                    if (closeRes.IsSuccessful)
-                                    {
-                                        closedCount++;
-                                    }
-                                    else
-                                    {
-                                        failedCount++;
-                                        Print(string.Format("[cTrader Watcher EMERGENCY] ECHEC fermeture position {0} ({1}): {2}",
-                                            position.Id, position.SymbolName, closeRes.Error));
-                                    }
-                                }
-
-                                Print(string.Format("[cTrader Watcher EMERGENCY] Liquidation terminée. Fermées: {0}/{1}. Echecs: {2}.",
-                                    closedCount, positionsToClose.Length, failedCount));
-
-                                if (latestState != null)
-                                {
-                                    latestState.DailyLossFreezeDaysRemaining = Math.Max(1, config.DailyLossFreezeDays);
-                                    latestState.ActiveOrders.Clear();
-                                    latestState.Cash = currentEquity;
-                                    latestState.TotalEquity = currentEquity;
-                                    SaveState(latestState);
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                Print("[cTrader Watcher EMERGENCY] Error during liquidation: " + ex.Message);
-                            }
-                        });
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Print("[cTrader Watcher] Error during intraday risk check: " + ex.Message);
-            }
-        }
-                
-        private string GetBrokerSymbol(string standardSymbol)
-        {
-            // Special resolution for SPY (S&P 500 Index)
-            if (standardSymbol == "SPY")
-            {
-                // Try override first if specified
-                if (!string.IsNullOrEmpty(SpySymbolOverride) && _availableBrokerSymbols.Contains(SpySymbolOverride))
-                {
-                    return SpySymbolOverride;
-                }
-
-                // Check exact SPY match first
-                if (_availableBrokerSymbols.Contains("SPY"))
-                {
-                    return "SPY";
-                }
-
-                // Try common index CFD names
-                string[] spyFallbacks = { "US500", "SPX500", "USA500", "SPX", "US 500", "S&P500", "US500.cfd", "#US500" };
-                foreach (var fallback in spyFallbacks)
-                {
-                    if (_availableBrokerSymbols.Contains(fallback))
-                    {
-                        return fallback;
-                    }
-                }
-
-                // Scan for any available symbol containing "500" or "SPX"
-                string dynamicFallback = _availableBrokerSymbols.FirstOrDefault(s => s.Contains("500") || s.Contains("SPX", StringComparison.OrdinalIgnoreCase));
-                if (dynamicFallback != null)
-                {
-                    return dynamicFallback;
-                }
-            }
-
-            // 1. Check with configured prefix/suffix if defined and exists
-            if (!string.IsNullOrEmpty(SymbolPrefix) || !string.IsNullOrEmpty(SymbolSuffix))
-            {
-                string configuredName = SymbolPrefix + standardSymbol + SymbolSuffix;
-                if (_availableBrokerSymbols.Contains(configuredName))
-                {
-                    return configuredName;
-                }
-            }
-
-            // 2. Check exact match
-            if (_availableBrokerSymbols.Contains(standardSymbol))
-            {
-                return standardSymbol;
-            }
-
-            // 3. Auto-resolve common suffixes
-            string[] commonSuffixes = { ".US", ".US-Cash", "-Cash", ".m", ".uk", ".de" };
-            foreach (var suffix in commonSuffixes)
-            {
-                string candidate = standardSymbol + suffix;
-                if (_availableBrokerSymbols.Contains(candidate))
-                {
-                    return candidate;
-                }
-            }
-
-            // 4. Try case-insensitive lookup
-            string found = _availableBrokerSymbols.FirstOrDefault(s => s.Equals(standardSymbol, StringComparison.OrdinalIgnoreCase));
-            if (found != null)
-            {
-                return found;
-            }
-
-            // Fallback: return configured format
-            return SymbolPrefix + standardSymbol + SymbolSuffix;
-        }
-
-        private string GetStandardSymbol(string brokerSymbol)
-        {
-            if (brokerSymbol == SpySymbolOverride)
-            {
-                return "SPY";
-            }
-            string result = brokerSymbol;
-            if (!string.IsNullOrEmpty(SymbolPrefix) && result.StartsWith(SymbolPrefix))
-            {
-                result = result.Substring(SymbolPrefix.Length);
-            }
-            if (!string.IsNullOrEmpty(SymbolSuffix) && result.EndsWith(SymbolSuffix))
-            {
-                result = result.Substring(0, result.Length - SymbolSuffix.Length);
-                return result;
-            }
-
-            // Auto strip common suffixes
-            string[] commonSuffixes = { ".US", ".US-Cash", "-Cash", ".m", ".uk", ".de" };
-            foreach (var suffix in commonSuffixes)
-            {
-                if (result.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
-                {
-                    result = result.Substring(0, result.Length - suffix.Length);
-                    break;
-                }
-            }
+            var result = new List<SimpleBar>();
+            var localBars = MarketData.GetBars(TimeFrame.Minute);
+            foreach (var b in localBars) result.Add(new SimpleBar { Open = b.Open, High = b.High, Low = b.Low, Close = b.Close, TickVolume = b.TickVolume });
             return result;
         }
 
-        private void ProcessMocLogic(DateTime today)
+        private void RunTrainingPhase()
         {
-            Print("[UnicornTrading cTrader] Running MOC Logic...");
+            Print($"⚙️ PHASE 1 : Extraction des caractéristiques causales ({TrainingHistoryBars} barres)...");
 
-            try
+            List<SimpleBar> barsList = FetchBarsForTraining();
+            int totalBars = barsList.Count;
+
+            if (totalBars < 100)
             {
-                // 1. Get latest state
-                CrashCatcherDailyState latestState = GetLatestState();
-                if (latestState == null)
-                {
-                    double initialBalance = Account.Balance;
-                    Print($"[UnicornTrading cTrader] No previous state found. Initializing with account balance: {initialBalance:N2}");
-                    latestState = new CrashCatcherDailyState
-                    {
-                        Date = today.AddDays(-1),
-                        Cash = initialBalance,
-                        InitialCash = initialBalance,
-                        PeakEquity = initialBalance,
-                        PeakRealizedEquity = initialBalance,
-                        TotalEquity = initialBalance
-                    };
-                }
-
-                // Protect against double processing
-                if (latestState.Date.Date >= today.Date)
-                {
-                    Print($"[UnicornTrading cTrader] Today {today:yyyy-MM-dd} already processed (last state: {latestState.Date:yyyy-MM-dd}). Aborting.");
-                    return;
-                }
-
-                CrashCatcherMstpConfiguration config = UseFtmoConfig ? CrashCatcherMstpConfiguration.GetFtmoConfiguration() : new CrashCatcherMstpConfiguration();
-
-                // 2. Load universe and sector maps
-                Print("[UnicornTrading cTrader] Loading universe history and sector map from MongoDB...");
-                var universeDocs = _universeHistoryCollection.Find(Builders<BsonDocument>.Filter.Empty).ToList();
-                var universeHistoryMap = new SortedDictionary<DateTime, List<string>>();
-                foreach (var doc in universeDocs)
-                {
-                    if (doc.Contains("Date") && doc.Contains("TopSymbols"))
-                    {
-                        DateTime dateVal = doc["Date"].ToUniversalTime().Date;
-                        var topSymbols = doc["TopSymbols"].AsBsonArray.Select(s => s.AsString).ToList();
-                        universeHistoryMap[dateVal] = topSymbols;
-                    }
-                }
-
-                var assetDocs = _assetInfoCollection.Find(Builders<BsonDocument>.Filter.Empty).ToList();
-                var sectorMap = new Dictionary<string, string>();
-                foreach (var doc in assetDocs)
-                {
-                    if (doc.Contains("Symbol") && doc.Contains("Sector"))
-                    {
-                        string symbol = doc["Symbol"].AsString;
-                        string sector = doc["Sector"].AsString;
-                        sectorMap[symbol] = sector;
-                    }
-                }
-
-                // 3. Compile list of symbols
-                var symbolsToFetch = new HashSet<string> { "SPY" };
-                foreach (var h in universeHistoryMap.Values)
-                {
-                    foreach (var s in h) symbolsToFetch.Add(s);
-                }
-                foreach (var o in latestState.ActiveOrders)
-                {
-                    symbolsToFetch.Add(o.Symbol);
-                }
-
-                // 4. Fetch daily bars (from Alpaca API with cTrader fallback for broker-supported symbols)
-                Print($"[UnicornTrading] Fetching historical daily bars for {symbolsToFetch.Count} candidate symbols...");
-                var barsCache = FetchBarsForSymbols(symbolsToFetch);
-
-                if (!barsCache.ContainsKey("SPY"))
-                {
-                    Print("[UnicornTrading cTrader] Error: SPY historical data is missing. Aborting.");
-                    return;
-                }
-
-                var availableDates = barsCache["SPY"]
-                    .Select(b => b.Timestamp.Date)
-                    .Where(d => d >= latestState.Date.Date && d <= today.Date)
-                    .OrderBy(x => x)
-                    .ToList();
-
-                if (!availableDates.Any())
-                {
-                    Print("[UnicornTrading cTrader] No available daily dates to process. Aborting.");
-                    return;
-                }
-
-                // 5. Synchronize real positions (cTrader -> State)
-                Print("[UnicornTrading cTrader] Synchronizing broker positions...");
-                var activePositions = Positions.FindAll(PositionLabel);
-                foreach (var grp in latestState.ActiveOrders.GroupBy(o => o.Symbol))
-                {
-                    string sym = grp.Key;
-                    var tranches = grp.ToList();
-                    double stateQty = tranches.Sum(o => o.Qty);
-
-                    string brokerSym = GetBrokerSymbol(sym);
-                    var realPos = activePositions.FirstOrDefault(p => p.SymbolName == brokerSym);
-
-                    if (realPos == null)
-                    {
-                        foreach (var o in tranches) o.Qty = 0;
-                        continue;
-                    }
-
-                    double realQty = realPos.VolumeInUnits;
-                    if (stateQty > 0 && Math.Abs(stateQty - realQty) > 0.001)
-                    {
-                        double scale = realQty / stateQty;
-                        Print(string.Format("[UnicornTrading Sync] {0} aggregate mismatch. State: {1:F2}, cTrader: {2:F2}. Scaling tranches by {3:F4}.",
-                            sym, stateQty, realQty, scale));
-
-                        foreach (var o in tranches) o.Qty = o.Qty * scale;
-                    }
-                }
-                latestState.ActiveOrders.RemoveAll(o => o.Qty <= 0.0001);
-
-                // Synchronize Cash
-                double brokerCash = Account.Balance;
-                if (Math.Abs(brokerCash - latestState.Cash) > 0.01)
-                {
-                    Print(string.Format("[UnicornTrading Sync] Cash mismatch. State: {0:N2}, cTrader: {1:N2}. Aligning.",
-                        latestState.Cash, brokerCash));
-                    latestState.Cash = brokerCash;
-                }
-
-                latestState.TotalExposure = latestState.ActiveOrders.Sum(o => o.Qty * o.CurrentPrice);
-                latestState.TotalEquity = latestState.Cash + latestState.TotalExposure;
-                Print($"[UnicornTrading Sync] Cash: {latestState.Cash:N2} | Exposure: {latestState.TotalExposure:N2} | TotalEquity: {latestState.TotalEquity:N2}");
-
-                DateTime targetExecutionDate = availableDates.Last();
-
-                Dictionary<string, int> indices = new Dictionary<string, int>();
-                foreach (var kvp in barsCache)
-                {
-                    for (int i = kvp.Value.Count - 1; i >= 0; i--)
-                    {
-                        if (kvp.Value[i].Timestamp.Date == targetExecutionDate)
-                        {
-                            indices[kvp.Key] = i;
-                            break;
-                        }
-                    }
-                }
-
-                if (!indices.ContainsKey("SPY"))
-                {
-                    Print("[UnicornTrading cTrader] SPY data missing for target date. Aborting.");
-                    return;
-                }
-
-                latestState.DailyRealizedPnl = 0;
-                latestState.ClosedToday = new List<CrashCatcherClosedOrder>();
-
-                // 6. Mark-To-Market
-                double mtm = 0;
-                foreach (var o in latestState.ActiveOrders)
-                {
-                    if (indices.TryGetValue(o.Symbol, out int idx))
-                    {
-                        o.CurrentPrice = barsCache[o.Symbol][idx].Close;
-                        mtm += o.Qty * o.CurrentPrice;
-                        if (o.CurrentPrice > o.HighPriceSinceEntry)
-                        {
-                            o.HighPriceSinceEntry = o.CurrentPrice;
-                        }
-                    }
-                    else
-                    {
-                        o.CurrentPrice = 0;
-                    }
-                }
-
-                latestState.TotalExposure = mtm;
-                latestState.TotalEquity = latestState.Cash + latestState.TotalExposure;
-                double prevNav = latestState.TotalEquity;
-
-                // Load active universe (filtering out symbols not available on the broker)
-                List<string> rawUniverse = universeHistoryMap.TryGetValue(targetExecutionDate.Date, out var v) ? v : new List<string>();
-                List<string> currentUniverse = new List<string>();
-                foreach (var sym in rawUniverse)
-                {
-                    string brokerSym = GetBrokerSymbol(sym);
-                    if (_availableBrokerSymbols.Contains(brokerSym))
-                    {
-                        currentUniverse.Add(sym);
-                    }
-                }
-                currentUniverse = currentUniverse.Take(config.UniverseSize).ToList();
-
-                // Regime filter
-                bool isSpyRegimeSafe = true;
-                if (config.UseRegimeFilter && barsCache.TryGetValue("SPY", out var spyBars) && indices.TryGetValue("SPY", out int spyIdx))
-                {
-                    if (spyIdx >= 200)
-                    {
-                        double ma200 = spyBars.GetRange(spyIdx - 200, 200).Average(b => b.Close);
-                        isSpyRegimeSafe = spyBars[spyIdx].Close > ma200;
-                    }
-                }
-
-                List<string> systemicPool = barsCache.Keys.ToList();
-
-                var sortedBars = barsCache.Where(kv => indices.ContainsKey(kv.Key)).ToDictionary(k => k.Key, k => k.Value);
-                var sortedIndices = indices.ToDictionary(k => k.Key, k => k.Value);
-
-                // 7. Run Engine Process
-                CrashCatcherMstpEngine.EngineResult dayRes = _engine.ProcessDay(
-                    targetExecutionDate, config, latestState, sortedBars, sortedIndices,
-                    currentUniverse, isSpyRegimeSafe, systemicPool, sectorMap);
-
-                List<CrashCatcherMstpEngine.TradingAction> executedActions = new();
-
-                // 8. Execute Sells (Liquidations / Sells / Partial Sells)
-                var sellActions = dayRes.Actions.Where(a => a.Type != CrashCatcherMstpEngine.ActionType.Buy).ToList();
-                foreach (var action in sellActions)
-                {
-                    try
-                    {
-                        string brokerSym = GetBrokerSymbol(action.Symbol);
-                        var pos = activePositions.FirstOrDefault(p => p.SymbolName == brokerSym);
-
-                        if (pos == null)
-                        {
-                            Print($"[UnicornTrading Sell] Skipping exit for {action.Symbol}: cTrader position not found.");
-                            continue;
-                        }
-
-                        double desiredQty = action.Type == CrashCatcherMstpEngine.ActionType.Liquidate
-                            ? pos.VolumeInUnits
-                            : action.Quantity;
-
-                        double sellQty = Math.Min(pos.VolumeInUnits, desiredQty);
-                        if (sellQty <= 0) continue;
-
-                        Print(string.Format("[UnicornTrading Sell] Closing position for {0} (Qty: {1:F2}) Reason: {2}",
-                            action.Symbol, sellQty, action.Reason));
-
-                        TradeResult closeRes;
-                        if (Math.Abs(sellQty - pos.VolumeInUnits) < 0.001)
-                        {
-                            closeRes = ClosePosition(pos);
-                        }
-                        else
-                        {
-                            closeRes = ClosePosition(pos, sellQty);
-                        }
-
-                        if (closeRes.IsSuccessful)
-                        {
-                            action.Quantity = sellQty;
-                            executedActions.Add(action);
-                        }
-                        else
-                        {
-                            Print($"[UnicornTrading Sell] Order failed for {action.Symbol}: " + closeRes.Error);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Print($"[UnicornTrading Sell] Exception exiting {action.Symbol}: " + ex.Message);
-                    }
-                }
-
-                // 9. Execute Buys (Calculated using Alpaca real-time / latest daily price)
-                var buyActions = dayRes.Actions.Where(a => a.Type == CrashCatcherMstpEngine.ActionType.Buy).ToList();
-                foreach (var action in buyActions)
-                {
-                    try
-                    {
-                        string brokerSym = GetBrokerSymbol(action.Symbol);
-                        if (!_availableBrokerSymbols.Contains(brokerSym))
-                        {
-                            Print($"[UnicornTrading Buy] Error: Symbol {brokerSym} not supported by broker.");
-                            continue;
-                        }
-                        var symbolInfo = Symbols.GetSymbol(brokerSym);
-                        if (symbolInfo == null)
-                        {
-                            Print($"[UnicornTrading Buy] Error: Symbol {brokerSym} failed to load.");
-                            continue;
-                        }
-
-                        // S'assurer que le prix utilisé est le dernier prix de clôture Alpaca disponible
-                        double alpacaPrice = action.Price;
-                        if (barsCache.TryGetValue(action.Symbol, out var symbolBars) && symbolBars.Count > 0)
-                        {
-                            alpacaPrice = symbolBars.Last().Close;
-                        }
-
-                        if (alpacaPrice <= 0)
-                        {
-                            Print($"[UnicornTrading Buy] Skipping {action.Symbol}: invalid Alpaca price {alpacaPrice}");
-                            continue;
-                        }
-
-                        double qty = action.Amount / alpacaPrice;
-                        double volume = symbolInfo.NormalizeVolumeInUnits(qty, RoundingMode.ToNearest);
-
-                        if (volume < symbolInfo.VolumeInUnitsMin)
-                        {
-                            Print(string.Format("[UnicornTrading Buy] Skipping {0}: normalized volume {1} below broker min {2}",
-                                action.Symbol, volume, symbolInfo.VolumeInUnitsMin));
-                            continue;
-                        }
-
-                        Print(string.Format("[UnicornTrading Buy] Opening BUY order for {0} (Volume: {1} @ Alpaca Price: {2:F2})",
-                            action.Symbol, volume, alpacaPrice));
-
-                        var buyRes = ExecuteMarketOrder(TradeType.Buy, brokerSym, volume, PositionLabel);
-                        if (buyRes.IsSuccessful)
-                        {
-                            action.Quantity = volume;
-                            action.Price = alpacaPrice;
-                            action.Amount = volume * alpacaPrice;
-                            executedActions.Add(action);
-                        }
-                        else
-                        {
-                            Print($"[UnicornTrading Buy] Order rejected for {action.Symbol}: " + buyRes.Error);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Print($"[UnicornTrading Buy] Exception buying {action.Symbol}: " + ex.Message);
-                    }
-                }
-
-                // 10. Update State and Save
-                dayRes.Actions = executedActions;
-                int buys = executedActions.Count(a => a.Type == CrashCatcherMstpEngine.ActionType.Buy);
-                int sellsAll = executedActions.Count(a => a.Type != CrashCatcherMstpEngine.ActionType.Buy);
-
-                _engine.ApplyActions(latestState, dayRes, targetExecutionDate, config.SlippagePct);
-
-                double mtmAfter = latestState.ActiveOrders.Sum(o => o.Qty * o.CurrentPrice);
-                latestState.TotalExposure = mtmAfter;
-                latestState.TotalEquity = latestState.Cash + latestState.TotalExposure;
-
-                _engine.UpdateDailyMetrics(latestState, targetExecutionDate, prevNav, dayRes.SystemicCrashActive, buys, sellsAll);
-
-                // Save back to Mongo
-                SaveState(latestState);
-                Print(string.Format("[UnicornTrading cTrader] MOC Logic Complete. NAV: {0:N2} | Positions: {1}",
-                    latestState.TotalEquity, latestState.ActiveOrders.Count));
+                Print("⚠️ Données historiques insuffisantes. Phase d'entraînement ignorée.");
+                return;
             }
-            catch (Exception ex)
+
+            int countToUse = Math.Min(TrainingHistoryBars, totalBars - 20);
+            int startIndex = Math.Max(0, totalBars - countToUse - 20);
+
+            List<MlofiMlFeatureData> trainingSamples = new List<MlofiMlFeatureData>();
+
+            for (int i = startIndex + 50; i < totalBars - 20; i++)
             {
-                Print("[UnicornTrading cTrader] Critical Error in MOC logic execution: " + ex.Message);
+                var bar = barsList[i];
+                double closePrice = bar.Close;
+
+                double range = Math.Max(bar.High - bar.Low, 0.01);
+                double closePos = (closePrice - bar.Low) / range;
+                double mlofiScore = (bar.TickVolume > 0) ? ((bar.TickVolume * (1.0 - closePos)) - (bar.TickVolume * closePos)) / bar.TickVolume : 0.0;
+
+                double sum20 = 0, sum50 = 0, sumVol = 0;
+                for (int k = 0; k < 50; k++)
+                {
+                    double c = barsList[i - k].Close;
+                    double v = barsList[i - k].TickVolume;
+                    if (k < 20) { sum20 += c; sumVol += v; }
+                    sum50 += c;
+                }
+                double ema20 = sum20 / 20.0;
+                double ema50 = sum50 / 50.0;
+                double avgVolume = sumVol / 20.0;
+
+                double gains = 0, losses = 0;
+                for (int k = 0; k < 14; k++)
+                {
+                    double diff = barsList[i - k].Close - barsList[i - k - 1].Close;
+                    if (diff > 0) gains += diff; else losses -= diff;
+                }
+                double rs = losses > 0 ? gains / losses : 1.0;
+                double rsi14 = 100.0 - (100.0 / (1.0 + rs));
+
+                double trSum = 0;
+                for (int k = 0; k < 14; k++)
+                {
+                    double tr1 = barsList[i - k].High - barsList[i - k].Low;
+                    double tr2 = Math.Abs(barsList[i - k].High - barsList[i - k - 1].Close);
+                    double tr3 = Math.Abs(barsList[i - k].Low - barsList[i - k - 1].Close);
+                    trSum += Math.Max(tr1, Math.Max(tr2, tr3));
+                }
+                double atr1m = trSum / 14.0;
+
+                bool isVolumeSpike = bar.TickVolume >= avgVolume * 1.1;
+                bool isBuy = closePrice > ema20 && mlofiScore >= 0.35 && isVolumeSpike;
+                bool isSell = closePrice < ema20 && mlofiScore <= -0.35 && isVolumeSpike;
+
+                if (!isBuy && !isSell) continue;
+
+                bool label = false;
+                double tp = isBuy ? closePrice + (1.0 * atr1m) : closePrice - (1.0 * atr1m);
+                double sl = isBuy ? closePrice - (1.0 * atr1m) : closePrice + (1.0 * atr1m);
+
+                for (int k = 1; k <= 15 && i + k < totalBars; k++)
+                {
+                    var fBar = barsList[i + k];
+                    if (isBuy) { if (fBar.High >= tp) { label = true; break; } if (fBar.Low <= sl) break; }
+                    else { if (fBar.Low <= tp) { label = true; break; } if (fBar.High >= sl) break; }
+                }
+
+                trainingSamples.Add(MlofiMlFeatureExtractor.ExtractFeatures(mlofiScore, closePrice, ema20, 0, ema20, ema50, atr1m, bar.TickVolume, avgVolume, rsi14, label));
             }
+
+            var res = _mlPredictor.TrainModel(trainingSamples, Print);
+            Print($"Echantillons : {res.SampleCount} | Accuracy: {res.Accuracy * 100:F2}% | AUC: {res.Auc:F4} | Precision: {res.Precision * 100:F2}%");
         }
 
-        private CrashCatcherDailyState GetLatestState()
+        protected override void OnBar()
         {
-            return _stateCollection.Find(Builders<CrashCatcherDailyState>.Filter.Empty)
-                .SortByDescending(d => d.UpdatedAt)
-                .FirstOrDefault();
-        }
-
-        private void SaveState(CrashCatcherDailyState state)
-        {
-            state.UpdatedAt = DateTime.UtcNow;
-            var filter = Builders<CrashCatcherDailyState>.Filter.Eq(s => s.Id, state.Id);
-            _stateCollection.ReplaceOne(filter, state, new ReplaceOptions { IsUpsert = true });
-        }
-
-        private Dictionary<string, List<Bars>> FetchBarsForSymbols(IEnumerable<string> standardSymbols)
-        {
-            var barsCache = new Dictionary<string, List<Bars>>();
-
-            // Seuls les symboles disponibles sur le courtier cTrader sont conservés
-            var validStandardSymbols = new List<string>();
-            foreach (var sym in standardSymbols.Distinct())
+            if (Server.Time.Date != _currentDay)
             {
-                string brokerSym = GetBrokerSymbol(sym);
-                if (_availableBrokerSymbols.Contains(brokerSym))
+                _currentDay = Server.Time.Date;
+                _dailyStartEquity = Account.Equity;
+                Print($"☀️ Nouveau jour FTMO : Equity de Départ = ${_dailyStartEquity:N2}");
+            }
+
+            if (Account.Equity > _peakEquity) _peakEquity = Account.Equity;
+
+            double currentDailyDrawdownPct = (_dailyStartEquity - Account.Equity) / _dailyStartEquity * 100.0;
+            if (currentDailyDrawdownPct >= MaxDailyLossPct)
+            {
+                Print($"⛔ DISJONCTEUR FTMO DECLENCHÉ : Perte Quotidienne = -{currentDailyDrawdownPct:F2}% (Limite = {MaxDailyLossPct}%). Trading Suspendu.");
+                return;
+            }
+
+            ManageBreakEven();
+
+            if (Positions.FindAll("MlofiFtmo").Length > 0) return;
+
+            var bars1m = MarketData.GetBars(TimeFrame.Minute);
+            int idx = bars1m.Count - 1;
+            if (idx < 50) return;
+
+            var bar = bars1m[idx];
+            double currentPrice = bar.Close;
+
+            double range = Math.Max(bar.High - bar.Low, 0.01);
+            double closePos = (currentPrice - bar.Low) / range;
+            double buyVol = bar.TickVolume * (1.0 - closePos);
+            double sellVol = bar.TickVolume * closePos;
+            double mlofiScore = (buyVol + sellVol > 0) ? (buyVol - sellVol) / (buyVol + sellVol) : 0.0;
+
+            double sum20 = 0, sum50 = 0, sumVol = 0;
+            for (int k = 0; k < 50; k++)
+            {
+                double c = bars1m[idx - k].Close;
+                double v = bars1m[idx - k].TickVolume;
+                if (k < 20) { sum20 += c; sumVol += v; }
+                sum50 += c;
+            }
+            double ema20 = sum20 / 20.0;
+            double ema50 = sum50 / 50.0;
+            double avgVolume = sumVol / 20.0;
+
+            double gains = 0, losses = 0;
+            for (int k = 0; k < 14; k++)
+            {
+                double diff = bars1m[idx - k].Close - bars1m[idx - k - 1].Close;
+                if (diff > 0) gains += diff;
+                else losses -= diff;
+            }
+            double rs = losses > 0 ? gains / losses : 1.0;
+            double rsi14 = 100.0 - (100.0 / (1.0 + rs));
+
+            double vwap = ema20;
+
+            double trSum = 0;
+            for (int k = 0; k < 14; k++)
+            {
+                double tr1 = bars1m[idx - k].High - bars1m[idx - k].Low;
+                double tr2 = Math.Abs(bars1m[idx - k].High - bars1m[idx - k - 1].Close);
+                double tr3 = Math.Abs(bars1m[idx - k].Low - bars1m[idx - k - 1].Close);
+                trSum += Math.Max(tr1, Math.Max(tr2, tr3));
+            }
+            double atr1m = trSum / 14.0;
+
+            bool isVolumeSpike = bar.TickVolume >= avgVolume * 1.1;
+
+            bool isBuySetup = currentPrice > ema20 && mlofiScore >= 0.35 && isVolumeSpike;
+            bool isSellSetup = currentPrice < ema20 && mlofiScore <= -0.35 && isVolumeSpike;
+
+            if (!isBuySetup && !isSellSetup) return;
+
+            if (_mlPredictor != null && _mlPredictor.IsTrained)
+            {
+                var featureSample = MlofiMlFeatureExtractor.ExtractFeatures(
+                    mlofiScore, currentPrice, vwap, 0, ema20, ema50, atr1m, bar.TickVolume, avgVolume, rsi14, false);
+
+                var prediction = _mlPredictor.Predict(featureSample);
+
+                if (prediction.Probability < 0.20f)
                 {
-                    validStandardSymbols.Add(sym);
-                }
-                else
-                {
-                    Print($"[UnicornTrading] Symbol '{sym}' (resolved to '{brokerSym}') is not available on cTrader broker. Skipping.");
-                }
-            }
-
-            if (validStandardSymbols.Count == 0)
-            {
-                return barsCache;
-            }
-
-            // 1. Charger 100% des barres quotidiennes depuis l'API Alpaca pour les symboles valides chez le courtier
-            if (string.IsNullOrWhiteSpace(AlpacaKeyId) || string.IsNullOrWhiteSpace(AlpacaSecretKey))
-            {
-                Print("[UnicornTrading Alpaca] ERROR: Alpaca Key ID and Secret Key must be configured. Aborting bar retrieval.");
-                return barsCache;
-            }
-
-            try
-            {
-                Print($"[UnicornTrading Alpaca] Fetching daily bars for {validStandardSymbols.Count} symbols exclusively from Alpaca API...");
-
-                using var httpClient = new HttpClient();
-                httpClient.DefaultRequestHeaders.Add("APCA-API-KEY-ID", AlpacaKeyId);
-                httpClient.DefaultRequestHeaders.Add("APCA-API-SECRET-KEY", AlpacaSecretKey);
-
-                string baseUrl = string.IsNullOrWhiteSpace(AlpacaDataUrl) ? "https://data.alpaca.markets/v2/" : AlpacaDataUrl;
-                if (!baseUrl.EndsWith("/")) baseUrl += "/";
-
-                string feed = string.IsNullOrWhiteSpace(AlpacaFeed) ? "sip" : AlpacaFeed;
-
-                int batchSize = 100;
-                for (int i = 0; i < validStandardSymbols.Count; i += batchSize)
-                {
-                    var batch = validStandardSymbols.Skip(i).Take(batchSize).ToList();
-                    string joinedSymbols = string.Join(",", batch);
-                    string url = $"{baseUrl}stocks/bars?symbols={joinedSymbols}&timeframe=1Day&limit=10000&feed={feed}&adjustment=all";
-
-                    var response = httpClient.GetAsync(url).GetAwaiter().GetResult();
-                    if (response.IsSuccessStatusCode)
-                    {
-                        string json = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-                        using var doc = JsonDocument.Parse(json);
-                        if (doc.RootElement.TryGetProperty("bars", out var barsProp) && barsProp.ValueKind == JsonValueKind.Object)
-                        {
-                            foreach (var symProp in barsProp.EnumerateObject())
-                            {
-                                string sym = symProp.Name;
-                                var barsArray = symProp.Value;
-                                var localBarsList = new List<Bars>();
-
-                                foreach (var b in barsArray.EnumerateArray())
-                                {
-                                    DateTime t = DateTime.SpecifyKind(b.GetProperty("t").GetDateTime(), DateTimeKind.Utc);
-                                    double o = b.GetProperty("o").GetDouble();
-                                    double h = b.GetProperty("h").GetDouble();
-                                    double l = b.GetProperty("l").GetDouble();
-                                    double c = b.GetProperty("c").GetDouble();
-                                    long v = b.GetProperty("v").GetInt64();
-
-                                    localBarsList.Add(new Bars
-                                    {
-                                        Timestamp = t,
-                                        Open = o,
-                                        High = h,
-                                        Low = l,
-                                        Close = c,
-                                        Volume = v
-                                    });
-                                }
-
-                                if (localBarsList.Count > 0)
-                                {
-                                    barsCache[sym] = localBarsList;
-                                }
-                            }
-                        }
-                    }
-                    else
-                    {
-                        Print($"[UnicornTrading Alpaca] HTTP {(int)response.StatusCode} error fetching bars: {response.ReasonPhrase}");
-                    }
-                }
-
-                Print($"[UnicornTrading Alpaca] Successfully fetched daily bars for {barsCache.Count}/{validStandardSymbols.Count} symbols exclusively from Alpaca API.");
-            }
-            catch (Exception ex)
-            {
-                Print($"[UnicornTrading Alpaca] Exception fetching bars from Alpaca API: {ex.Message}");
-            }
-
-            return barsCache;
-        }
-
-        private bool VerifyAlpacaConnection()
-        {
-            Print("[Alpaca Verification] Testing Alpaca API connection...");
-
-            if (string.IsNullOrWhiteSpace(AlpacaKeyId) || string.IsNullOrWhiteSpace(AlpacaSecretKey))
-            {
-                Print("[Alpaca Verification] FAILED: Alpaca Key ID or Secret Key is not configured in cBot parameters!");
-                return false;
-            }
-
-            try
-            {
-                using var httpClient = new HttpClient();
-                httpClient.DefaultRequestHeaders.Add("APCA-API-KEY-ID", AlpacaKeyId.Trim());
-                httpClient.DefaultRequestHeaders.Add("APCA-API-SECRET-KEY", AlpacaSecretKey.Trim());
-
-                string baseUrl = string.IsNullOrWhiteSpace(AlpacaDataUrl) ? "https://data.alpaca.markets/v2/" : AlpacaDataUrl.Trim();
-                if (!baseUrl.EndsWith("/")) baseUrl += "/";
-
-                string feed = string.IsNullOrWhiteSpace(AlpacaFeed) ? "sip" : AlpacaFeed.Trim();
-                string testUrl = $"{baseUrl}stocks/bars?symbols=SPY&timeframe=1Day&limit=1&feed={feed}";
-
-                var response = httpClient.GetAsync(testUrl).GetAwaiter().GetResult();
-                string maskedKey = AlpacaKeyId.Trim().Length > 6
-                    ? AlpacaKeyId.Trim().Substring(0, 4) + "..." + AlpacaKeyId.Trim().Substring(AlpacaKeyId.Trim().Length - 2)
-                    : "***";
-
-                if (response.IsSuccessStatusCode)
-                {
-                    Print($"[Alpaca Verification] SUCCESS: Connected to Alpaca Data API! (Key: {maskedKey}, Feed: {feed}, Status: 200 OK)");
-                    return true;
-                }
-                else if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized || response.StatusCode == System.Net.HttpStatusCode.Forbidden)
-                {
-                    Print($"[Alpaca Verification] FAILED: Invalid credentials (HTTP {(int)response.StatusCode} {response.ReasonPhrase}). Please check Key ID and Secret Key.");
-                    return false;
-                }
-                else
-                {
-                    Print($"[Alpaca Verification] WARNING: HTTP {(int)response.StatusCode} {response.ReasonPhrase} testing Alpaca connection.");
-                    return false;
-                }
-            }
-            catch (Exception ex)
-            {
-                Print($"[Alpaca Verification] FAILED: Exception connecting to Alpaca API: {ex.Message}");
-                return false;
-            }
-        }
-
-        private void PerformStartupVerification()
-        {
-            Print("[UnicornTrading cTrader] Performing startup verification checks...");
-
-            try
-            {
-                // Verify Alpaca API connection
-                VerifyAlpacaConnection();
-
-                if (_database == null)
-                {
-                    Print("[Verification] FAILED: MongoDB database is not initialized.");
                     return;
                 }
-
-                // 1. Check MongoDB state retrieval
-                Print("[Verification] Fetching latest state from MongoDB...");
-                CrashCatcherDailyState latestState = GetLatestState();
-                if (latestState == null)
-                {
-                    Print("[Verification] WARNING: No previous state found in MongoDB. Will initialize on trigger.");
-                }
-                else
-                {
-                    Print($"[Verification] Found state for date: {latestState.Date:yyyy-MM-dd} with {latestState.ActiveOrders.Count} active orders.");
-                }
-
-                // 2. Compile list of symbols to test
-                var symbolsToTest = new HashSet<string> { "SPY" };
-                
-                if (latestState != null && latestState.ActiveOrders != null)
-                {
-                    foreach (var o in latestState.ActiveOrders)
-                    {
-                        if (!string.IsNullOrEmpty(o.Symbol))
-                        {
-                            symbolsToTest.Add(o.Symbol);
-                        }
-                    }
-                }
-
-                try
-                {
-                    var latestUniverseDoc = _universeHistoryCollection.Find(Builders<BsonDocument>.Filter.Empty)
-                        .Sort(Builders<BsonDocument>.Sort.Descending("Date"))
-                        .FirstOrDefault();
-                    if (latestUniverseDoc != null && latestUniverseDoc.Contains("TopSymbols"))
-                    {
-                        var topSymbols = latestUniverseDoc["TopSymbols"].AsBsonArray.Select(s => s.AsString).ToList();
-                        foreach (var s in topSymbols)
-                        {
-                            symbolsToTest.Add(s);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Print("[Verification] WARNING: Could not fetch latest universe history from MongoDB: " + ex.Message);
-                }
-
-                Print($"[Verification] Testing bar data retrieval for {symbolsToTest.Count} symbols...");
-                var testBars = FetchBarsForSymbols(symbolsToTest);
-
-                int successes = 0;
-                int failures = 0;
-
-                foreach (var standardSym in symbolsToTest)
-                {
-                    string brokerSym = GetBrokerSymbol(standardSym);
-                    if (!_availableBrokerSymbols.Contains(brokerSym))
-                    {
-                        Print($"[Verification] ERROR: Symbol '{standardSym}' (resolved to '{brokerSym}') is NOT supported by cTrader broker.");
-                        failures++;
-                        continue;
-                    }
-
-                    if (testBars.TryGetValue(standardSym, out var bars) && bars.Count > 0)
-                    {
-                        Print($"[Verification] SUCCESS: '{standardSym}' mapped to '{brokerSym}' (Daily Bars: {bars.Count}, Last Close: {bars.Last().Close})");
-                        successes++;
-                    }
-                    else
-                    {
-                        Print($"[Verification] ERROR: Failed to fetch daily bars for '{standardSym}' (mapped to '{brokerSym}').");
-                        failures++;
-                    }
-                }
-
-                Print($"[Verification] Verification complete. Successes: {successes}/{symbolsToTest.Count}. Failures: {failures}.");
-
-                string spyBrokerSym = GetBrokerSymbol("SPY");
-                if (!_availableBrokerSymbols.Contains(spyBrokerSym))
-                {
-                    Print($"[Verification] CRITICAL ERROR: SPY (mapped to '{spyBrokerSym}') is not accessible in the broker database. Strategy will crash at MOC!");
-                    
-                    // Search for indices containing S&P, 500, SPX, SPY, USA or US
-                    var indexSuggestions = new List<string>();
-                    string[] keywords = { "500", "SPX", "SPY", "US500", "USA500", "US Tech 100", "NAS100", "USTEC", "US30" };
-                    foreach (var s in _availableBrokerSymbols)
-                    {
-                        foreach (var kw in keywords)
-                        {
-                            if (s.Contains(kw, StringComparison.OrdinalIgnoreCase))
-                            {
-                                indexSuggestions.Add(s);
-                                break;
-                            }
-                        }
-                    }
-
-                    if (indexSuggestions.Any())
-                    {
-                        Print("[Verification] SUGGESTION: Your broker doesn't have SPY. You can try setting the 'SPY Symbol Override' parameter in the cBot UI to one of these available indices: " + string.Join(", ", indexSuggestions.Take(15)));
-                    }
-                }
             }
-            catch (Exception ex)
+
+            double currentOverallDrawdownPct = (_peakEquity - Account.Equity) / _peakEquity * 100.0;
+            double effectiveRiskPct = (currentOverallDrawdownPct >= MaxDrawdownPct) ? RiskPerTradePct * 0.5 : RiskPerTradePct;
+            double riskBudgetDollars = Account.Equity * (effectiveRiskPct / 100.0);
+
+            double slDistance = atr1m * SlAtrMultiplier;
+            double tpDistance = atr1m * TpAtrMultiplier;
+
+            if (slDistance <= 0.05) slDistance = 0.50;
+            if (tpDistance <= 0.05) tpDistance = 1.00;
+
+            double volumeLots = Symbol.VolumeInUnitsToQuantity(riskBudgetDollars / slDistance);
+            volumeLots = Symbol.NormalizeVolumeInUnits(volumeLots, RoundingMode.ToNearest);
+
+            if (volumeLots <= 0) return;
+
+            TradeType tradeType = isBuySetup ? TradeType.Buy : TradeType.Sell;
+            double slPips = slDistance / Symbol.PipSize;
+            double tpPips = tpDistance / Symbol.PipSize;
+
+            Print($"🎯 EXECUTION SIGNAL MLOFI FTMO : {tradeType} | Lots: {volumeLots} | SL: {slPips:F1} pips | TP: {tpPips:F1} pips");
+            ExecuteMarketOrder(tradeType, Symbol.Name, volumeLots, "MlofiFtmo", slPips, tpPips);
+        }
+
+        private void ManageBreakEven()
+        {
+            var openPositions = Positions.FindAll("MlofiFtmo");
+            foreach (var pos in openPositions)
             {
-                Print("[Verification] Critical exception during verification: " + ex.Message);
+                double currentProfitPips = pos.Pips;
+                double tpDistancePips = Math.Abs(pos.TakeProfit.GetValueOrDefault() - pos.EntryPrice) / Symbol.PipSize;
+
+                if (currentProfitPips >= tpDistancePips * 0.40)
+                {
+                    if (pos.TradeType == TradeType.Buy && pos.StopLoss < pos.EntryPrice)
+                    {
+                        ModifyPosition(pos, pos.EntryPrice, pos.TakeProfit);
+                        Print($"🛡️ BREAK-EVEN APPLIQUÉ SUR POSITION #{pos.Id} (Buy @ {pos.EntryPrice})");
+                    }
+                    else if (pos.TradeType == TradeType.Sell && (pos.StopLoss == null || pos.StopLoss > pos.EntryPrice))
+                    {
+                        ModifyPosition(pos, pos.EntryPrice, pos.TakeProfit);
+                        Print($"🛡️ BREAK-EVEN APPLIQUÉ SUR POSITION #{pos.Id} (Sell @ {pos.EntryPrice})");
+                    }
+                }
             }
         }
     }
