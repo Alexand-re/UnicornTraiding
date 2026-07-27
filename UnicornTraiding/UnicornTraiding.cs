@@ -230,7 +230,8 @@ namespace cAlgo.Robots
                         client.DefaultRequestHeaders.Add("APCA-API-KEY-ID", AlpacaKeyId.Trim());
                         client.DefaultRequestHeaders.Add("APCA-API-SECRET-KEY", AlpacaSecretKey.Trim());
 
-                        string url = $"https://data.alpaca.markets/v2/stocks/bars?symbols=SPY&timeframe=1Min&limit=10000&feed={AlpacaFeed}";
+                        string startDate = DateTime.UtcNow.AddDays(-60).ToString("yyyy-MM-ddTHH:mm:ssZ");
+                        string url = $"https://data.alpaca.markets/v2/stocks/bars?symbols=SPY&timeframe=1Min&limit=10000&start={startDate}&feed={AlpacaFeed}";
                         var response = client.GetAsync(url).Result;
 
                         if (response.IsSuccessStatusCode)
