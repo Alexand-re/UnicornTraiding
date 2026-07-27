@@ -558,8 +558,18 @@ namespace cAlgo.Robots
             bool isBuySetup = currentPrice > ema20 && mlofiScore >= MlofiThreshold && isVolumeSpike;
             bool isSellSetup = currentPrice < ema20 && mlofiScore <= -MlofiThreshold && isVolumeSpike;
 
-            // Log diagnostic minute par minute pour suivi utilisateur
-            Print($"🔍 [Analyse {Server.Time:HH:mm:ss}] {(usingAlpacaLive ? "Alpaca SPY" : "Local")} Prix: ${currentPrice:F2} | MLOFI: {mlofiScore:+0.00;-0.00} (Seuil ±{MlofiThreshold:F2}) | Signal: {(isBuySetup ? "BUY SETUP" : isSellSetup ? "SELL SETUP" : "EN ATTENTE")}");
+            double volRatio = avgVolume > 0 ? (usingAlpacaLive ? (liveBars[liveBars.Count - 1].TickVolume / avgVolume) : (MarketData.GetBars(TimeFrame.Minute).LastBar.TickVolume / avgVolume)) : 1.0;
+
+            string blockReason = "";
+            if (!isBuySetup && !isSellSetup)
+            {
+                if (mlofiScore >= MlofiThreshold && currentPrice <= ema20) blockReason = $"Prix < EMA20 (${currentPrice:F2} < ${ema20:F2})";
+                else if (mlofiScore <= -MlofiThreshold && currentPrice >= ema20) blockReason = $"Prix > EMA20 (${currentPrice:F2} > ${ema20:F2})";
+                else if (Math.Abs(mlofiScore) >= MlofiThreshold && !isVolumeSpike) blockReason = $"Vol Faible ({volRatio:F1}x < 1.1x)";
+                else blockReason = $"MLOFI Neutre ({mlofiScore:+0.00;-0.00})";
+            }
+
+            Print($"🔍 [Analyse {Server.Time:HH:mm:ss}] SPY: ${currentPrice:F2} (EMA20: ${ema20:F2}) | MLOFI: {mlofiScore:+0.00;-0.00} | Vol: {volRatio:F1}x | Status: {(isBuySetup ? "BUY SETUP 🟢" : isSellSetup ? "SELL SETUP 🔴" : $"EN ATTENTE ⏳ [{blockReason}]")}");
 
             if (!isBuySetup && !isSellSetup) return;
 
