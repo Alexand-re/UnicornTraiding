@@ -165,8 +165,8 @@ namespace cAlgo.Robots
         [Parameter("Risque Par Trade (%)", Group = "2. Risk Management FTMO", DefaultValue = 0.30)]
         public double RiskPerTradePct { get; set; } = 0.30;
 
-        [Parameter("Max Positions Simultanées", Group = "2. Risk Management FTMO", DefaultValue = 4)]
-        public int MaxConcurrentTrades { get; set; } = 4;
+        [Parameter("Max Positions Simultanées (20 = Mode Pyramide IA)", Group = "2. Risk Management FTMO", DefaultValue = 20)]
+        public int MaxConcurrentTrades { get; set; } = 20;
 
         [Parameter("Disjoncteur Jour FTMO (%)", Group = "2. Risk Management FTMO", DefaultValue = 2.5)]
         public double MaxDailyLossPct { get; set; } = 2.5;
