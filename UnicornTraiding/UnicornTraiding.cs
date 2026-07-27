@@ -453,7 +453,13 @@ namespace cAlgo.Robots
             double currentDailyDrawdownPct = (_dailyStartEquity - Account.Equity) / _dailyStartEquity * 100.0;
             if (currentDailyDrawdownPct >= MaxDailyLossPct)
             {
-                Print($"⛔ DISJONCTEUR FTMO DECLENCHÉ : Perte Quotidienne = -{currentDailyDrawdownPct:F2}% (Limite = {MaxDailyLossPct}%). Trading Suspendu.");
+                var activePositions = Positions.FindAll("MlofiFtmo");
+                foreach (var pos in activePositions)
+                {
+                    ClosePosition(pos);
+                    Print($"🚨 DISJONCTEUR FTMO ACTIVÉ : Position #{pos.Id} fermée d'urgence à -{currentDailyDrawdownPct:F2}%.");
+                }
+                Print($"⛔ DISJONCTEUR FTMO DÉCLENCHÉ : Perte Quotidienne = -{currentDailyDrawdownPct:F2}% (Limite = {MaxDailyLossPct}%). Vente totale & arrêt du trading pour la journée.");
                 return;
             }
 
