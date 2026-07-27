@@ -118,10 +118,10 @@ namespace cAlgo.Robots
                 .Append(_mlContext.BinaryClassification.Trainers.FastTree(
                     new FastTreeBinaryTrainer.Options
                     {
-                        NumberOfLeaves = 20,
+                        NumberOfLeaves = 15,
                         NumberOfTrees = 100,
                         MinimumExampleCountPerLeaf = 10,
-                        LearningRate = 0.1,
+                        LearningRate = 0.05,
                         LabelColumnName = nameof(MlofiMlFeatureData.Label),
                         FeatureColumnName = "Features"
                     }));
@@ -171,11 +171,14 @@ namespace cAlgo.Robots
         [Parameter("Seuil Réduction DD FTMO (%)", Group = "2. Risk Management FTMO", DefaultValue = 5.0)]
         public double MaxDrawdownPct { get; set; } = 5.0;
 
-        [Parameter("Multiplicateur StopLoss (x ATR)", Group = "3. Bracket Orders", DefaultValue = 0.8)]
-        public double SlAtrMultiplier { get; set; } = 0.8;
+        [Parameter("Seuil MLOFI Score", Group = "1. Target Setup", DefaultValue = 0.25)]
+        public double MlofiThreshold { get; set; } = 0.25;
 
-        [Parameter("Multiplicateur TakeProfit (x ATR)", Group = "3. Bracket Orders", DefaultValue = 1.6)]
-        public double TpAtrMultiplier { get; set; } = 1.6;
+        [Parameter("Multiplicateur StopLoss (x ATR)", Group = "3. Bracket Orders", DefaultValue = 0.6)]
+        public double SlAtrMultiplier { get; set; } = 0.6;
+
+        [Parameter("Multiplicateur TakeProfit (x ATR)", Group = "3. Bracket Orders", DefaultValue = 1.8)]
+        public double TpAtrMultiplier { get; set; } = 1.8;
 
         [Parameter("Activer Apprentissage ML FastTree", Group = "4. Machine Learning", DefaultValue = true)]
         public bool EnableMlTraining { get; set; } = true;
@@ -361,14 +364,14 @@ namespace cAlgo.Robots
                 double atr1m = trSum / 14.0;
 
                 bool isVolumeSpike = bar.TickVolume >= avgVolume * 1.1;
-                bool isBuy = closePrice > ema20 && mlofiScore >= 0.35 && isVolumeSpike;
-                bool isSell = closePrice < ema20 && mlofiScore <= -0.35 && isVolumeSpike;
+                bool isBuy = closePrice > ema20 && mlofiScore >= MlofiThreshold && isVolumeSpike;
+                bool isSell = closePrice < ema20 && mlofiScore <= -MlofiThreshold && isVolumeSpike;
 
                 if (!isBuy && !isSell) continue;
 
                 bool label = false;
-                double tp = isBuy ? closePrice + (1.0 * atr1m) : closePrice - (1.0 * atr1m);
-                double sl = isBuy ? closePrice - (1.0 * atr1m) : closePrice + (1.0 * atr1m);
+                double tp = isBuy ? closePrice + (TpAtrMultiplier * atr1m) : closePrice - (TpAtrMultiplier * atr1m);
+                double sl = isBuy ? closePrice - (SlAtrMultiplier * atr1m) : closePrice + (SlAtrMultiplier * atr1m);
 
                 for (int k = 1; k <= 15 && i + k < totalBars; k++)
                 {
@@ -455,8 +458,8 @@ namespace cAlgo.Robots
 
             bool isVolumeSpike = bar.TickVolume >= avgVolume * 1.1;
 
-            bool isBuySetup = currentPrice > ema20 && mlofiScore >= 0.35 && isVolumeSpike;
-            bool isSellSetup = currentPrice < ema20 && mlofiScore <= -0.35 && isVolumeSpike;
+            bool isBuySetup = currentPrice > ema20 && mlofiScore >= MlofiThreshold && isVolumeSpike;
+            bool isSellSetup = currentPrice < ema20 && mlofiScore <= -MlofiThreshold && isVolumeSpike;
 
             if (!isBuySetup && !isSellSetup) return;
 
