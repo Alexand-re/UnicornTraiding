@@ -219,6 +219,55 @@ namespace cAlgo.Robots
         private List<SimpleBar> FetchBarsForTraining()
         {
             var result = new List<SimpleBar>();
+
+            if (!string.IsNullOrEmpty(AlpacaKeyId) && !string.IsNullOrEmpty(AlpacaSecretKey))
+            {
+                try
+                {
+                    Print("📥 Téléchargement des barres 1m réelles SPY depuis Alpaca Market Data API...");
+                    using (var client = new System.Net.Http.HttpClient())
+                    {
+                        client.DefaultRequestHeaders.Add("APCA-API-KEY-ID", AlpacaKeyId.Trim());
+                        client.DefaultRequestHeaders.Add("APCA-API-SECRET-KEY", AlpacaSecretKey.Trim());
+
+                        string url = $"https://data.alpaca.markets/v2/stocks/bars?symbols=SPY&timeframe=1Min&limit=10000&feed={AlpacaFeed}";
+                        var response = client.GetAsync(url).Result;
+
+                        if (response.IsSuccessStatusCode)
+                        {
+                            string json = response.Content.ReadAsStringAsync().Result;
+                            using (var doc = System.Text.Json.JsonDocument.Parse(json))
+                            {
+                                if (doc.RootElement.TryGetProperty("bars", out var barsElem) &&
+                                    barsElem.TryGetProperty("SPY", out var spyBars))
+                                {
+                                    foreach (var item in spyBars.EnumerateArray())
+                                    {
+                                        double o = item.GetProperty("o").GetDouble();
+                                        double h = item.GetProperty("h").GetDouble();
+                                        double l = item.GetProperty("l").GetDouble();
+                                        double c = item.GetProperty("c").GetDouble();
+                                        double v = item.GetProperty("v").GetDouble();
+
+                                        result.Add(new SimpleBar { Open = o, High = h, Low = l, Close = c, TickVolume = v });
+                                    }
+                                }
+                            }
+                            Print($"✅ {result.Count} barres 1m réelles SPY chargées avec succès depuis Alpaca API !");
+                            return result;
+                        }
+                        else
+                        {
+                            Print($"⚠️ Échec réponse Alpaca API (Status: {response.StatusCode}). Repli sur barres locales cTrader...");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Print($"⚠️ Exception lors de l'appel Alpaca API: {ex.Message}. Repli sur barres locales cTrader...");
+                }
+            }
+
             var localBars = MarketData.GetBars(TimeFrame.Minute);
             foreach (var b in localBars) result.Add(new SimpleBar { Open = b.Open, High = b.High, Low = b.Low, Close = b.Close, TickVolume = b.TickVolume });
             return result;
