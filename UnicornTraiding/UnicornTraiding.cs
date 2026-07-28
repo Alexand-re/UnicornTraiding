@@ -91,8 +91,10 @@ namespace cAlgo.Robots
     public class MlofiMlPredictorEngine
     {
         private readonly MLContext _mlContext;
-        private ITransformer? _model;
-        private PredictionEngine<MlofiMlFeatureData, MlofiMlPredictionData>? _predictionEngine;
+        private ITransformer? _modelFastTree;
+        private ITransformer? _modelFastForest;
+        private PredictionEngine<MlofiMlFeatureData, MlofiMlPredictionData>? _predEngineFastTree;
+        private PredictionEngine<MlofiMlFeatureData, MlofiMlPredictionData>? _predEngineFastForest;
 
         public bool IsTrained { get; private set; }
 
@@ -116,35 +118,48 @@ namespace cAlgo.Robots
             var trainDataView = _mlContext.Data.LoadFromEnumerable(trainSamples);
             var testDataView = _mlContext.Data.LoadFromEnumerable(testSamples.Count > 0 ? testSamples : trainSamples);
 
-            var pipeline = _mlContext.Transforms.Concatenate("Features",
-                    nameof(MlofiMlFeatureData.MlofiScore),
-                    nameof(MlofiMlFeatureData.VwapDistancePercent),
-                    nameof(MlofiMlFeatureData.VwapSlope),
-                    nameof(MlofiMlFeatureData.EmaRatio),
-                    nameof(MlofiMlFeatureData.NormalizedAtr),
-                    nameof(MlofiMlFeatureData.VolumeRatio),
-                    nameof(MlofiMlFeatureData.Rsi14),
-                    nameof(MlofiMlFeatureData.MacdHist),
-                    nameof(MlofiMlFeatureData.BollingerWidth),
-                    nameof(MlofiMlFeatureData.MicroSlope5))
-                .Append(_mlContext.BinaryClassification.Trainers.FastTree(
-                    new FastTreeBinaryTrainer.Options
-                    {
-                        NumberOfLeaves = 20,
-                        NumberOfTrees = 150,
-                        MinimumExampleCountPerLeaf = 10,
-                        LearningRate = 0.03,
-                        LabelColumnName = nameof(MlofiMlFeatureData.Label),
-                        FeatureColumnName = "Features"
-                    }));
+            var prepPipeline = _mlContext.Transforms.Concatenate("Features",
+                nameof(MlofiMlFeatureData.MlofiScore),
+                nameof(MlofiMlFeatureData.VwapDistancePercent),
+                nameof(MlofiMlFeatureData.VwapSlope),
+                nameof(MlofiMlFeatureData.EmaRatio),
+                nameof(MlofiMlFeatureData.NormalizedAtr),
+                nameof(MlofiMlFeatureData.VolumeRatio),
+                nameof(MlofiMlFeatureData.Rsi14),
+                nameof(MlofiMlFeatureData.MacdHist),
+                nameof(MlofiMlFeatureData.BollingerWidth),
+                nameof(MlofiMlFeatureData.MicroSlope5));
 
-            log($"🧠 Entraînement FastTree GBDT sur {trainSamples.Count} échantillons (Évaluation Hors-Éch. sur {testSamples.Count})...");
-            _model = pipeline.Fit(trainDataView);
+            var pipelineFastTree = prepPipeline.Append(_mlContext.BinaryClassification.Trainers.FastTree(
+                new FastTreeBinaryTrainer.Options
+                {
+                    NumberOfLeaves = 20,
+                    NumberOfTrees = 150,
+                    MinimumExampleCountPerLeaf = 10,
+                    LearningRate = 0.03,
+                    LabelColumnName = nameof(MlofiMlFeatureData.Label),
+                    FeatureColumnName = "Features"
+                }));
 
-            var predictionsView = _model.Transform(testDataView);
-            var metrics = _mlContext.BinaryClassification.Evaluate(predictionsView, labelColumnName: nameof(MlofiMlFeatureData.Label));
+            var pipelineFastForest = prepPipeline.Append(_mlContext.BinaryClassification.Trainers.FastForest(
+                new FastForestBinaryTrainer.Options
+                {
+                    NumberOfLeaves = 20,
+                    NumberOfTrees = 150,
+                    MinimumExampleCountPerLeaf = 10,
+                    LabelColumnName = nameof(MlofiMlFeatureData.Label),
+                    FeatureColumnName = "Features"
+                }));
 
-            _predictionEngine = _mlContext.Model.CreatePredictionEngine<MlofiMlFeatureData, MlofiMlPredictionData>(_model);
+            log($"🧠 Entraînement de l'IA Hybride Ensemble (FastTree GBDT + FastForest RF) sur {trainSamples.Count} échantillons...");
+            _modelFastTree = pipelineFastTree.Fit(trainDataView);
+            _modelFastForest = pipelineFastForest.Fit(trainDataView);
+
+            var testPredsView = _modelFastTree.Transform(testDataView);
+            var metrics = _mlContext.BinaryClassification.Evaluate(testPredsView, labelColumnName: nameof(MlofiMlFeatureData.Label));
+
+            _predEngineFastTree = _mlContext.Model.CreatePredictionEngine<MlofiMlFeatureData, MlofiMlPredictionData>(_modelFastTree);
+            _predEngineFastForest = _mlContext.Model.CreatePredictionEngine<MlofiMlFeatureData, MlofiMlPredictionData>(_modelFastForest);
             IsTrained = true;
 
             return (metrics.Accuracy, metrics.AreaUnderRocCurve, metrics.PositivePrecision, trainingData.Count);
@@ -152,12 +167,23 @@ namespace cAlgo.Robots
 
         public MlofiMlPredictionData Predict(MlofiMlFeatureData sample)
         {
-            if (!IsTrained || _predictionEngine == null)
+            if (!IsTrained || _predEngineFastTree == null || _predEngineFastForest == null)
             {
                 return new MlofiMlPredictionData { PredictedLabel = true, Probability = 0.5f, Score = 0f };
             }
 
-            return _predictionEngine.Predict(sample);
+            var predTree = _predEngineFastTree.Predict(sample);
+            var predForest = _predEngineFastForest.Predict(sample);
+
+            // Vote pondéré Soft-Voting (60% FastTree GBDT + 40% FastForest Random Forest)
+            float combinedProb = (0.60f * predTree.Probability) + (0.40f * predForest.Probability);
+
+            return new MlofiMlPredictionData
+            {
+                PredictedLabel = combinedProb >= 0.35f,
+                Probability = combinedProb,
+                Score = (predTree.Score + predForest.Score) / 2.0f
+            };
         }
     }
 
