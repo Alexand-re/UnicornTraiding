@@ -186,6 +186,15 @@ namespace cAlgo.Robots
         [Parameter("Multiplicateur TakeProfit (x ATR)", Group = "3. Bracket Orders", DefaultValue = 1.6)]
         public double TpAtrMultiplier { get; set; } = 1.6;
 
+        [Parameter("Utiliser Ordres Limite", Group = "3. Bracket Orders", DefaultValue = true)]
+        public bool UseLimitOrders { get; set; } = true;
+
+        [Parameter("Slippage / Buffer Max (Pips)", Group = "3. Bracket Orders", DefaultValue = 0.5)]
+        public double MaxSlippagePips { get; set; } = 0.5;
+
+        [Parameter("Expiration Ordre Limite (Minutes)", Group = "3. Bracket Orders", DefaultValue = 1.0)]
+        public double LimitOrderTimeoutMinutes { get; set; } = 1.0;
+
         [Parameter("Activer Apprentissage ML FastTree", Group = "4. Machine Learning", DefaultValue = true)]
         public bool EnableMlTraining { get; set; } = true;
 
@@ -477,7 +486,8 @@ namespace cAlgo.Robots
 
             ManageBreakEven();
 
-            if (Positions.FindAll("MlofiFtmo").Length >= MaxConcurrentTrades) return;
+            int activeTotalCount = Positions.FindAll("MlofiFtmo").Length + PendingOrders.Where(o => o.Label == "MlofiFtmo").Count();
+            if (activeTotalCount >= MaxConcurrentTrades) return;
 
             // Récupérer les données SPY réelles en direct via Alpaca si configuré
             List<SimpleBar> liveBars = FetchLiveSpyBars();
@@ -639,7 +649,18 @@ namespace cAlgo.Robots
             double tpPips = tpDistance / Symbol.PipSize;
 
             Print($"🎯 EXECUTION SIGNAL MLOFI FTMO ({(usingAlpacaLive ? "Alpaca SPY Live" : "Local")}) : {tradeType} | Lots: {volumeLots} | SL: {slPips:F1} pips | TP: {tpPips:F1} pips");
-            ExecuteMarketOrder(tradeType, Symbol.Name, volumeLots, "MlofiFtmo", slPips, tpPips);
+
+            if (UseLimitOrders)
+            {
+                double targetPrice = isBuySetup ? (Symbol.Ask + (MaxSlippagePips * Symbol.PipSize)) : (Symbol.Bid - (MaxSlippagePips * Symbol.PipSize));
+                DateTime expirationTime = Server.Time.AddMinutes(LimitOrderTimeoutMinutes);
+                Print($"📌 PLACEMENT ORDRE LIMITE : {tradeType} @ {targetPrice:F2} (Slippage Buffer = {MaxSlippagePips} pips, Expiration = {expirationTime:HH\\:mm\\:ss})");
+                PlaceLimitOrder(tradeType, Symbol.Name, volumeLots, targetPrice, "MlofiFtmo", slPips, tpPips, expirationTime);
+            }
+            else
+            {
+                ExecuteMarketOrder(tradeType, Symbol.Name, volumeLots, "MlofiFtmo", slPips, tpPips);
+            }
         }
 
         private void ManageBreakEven()
