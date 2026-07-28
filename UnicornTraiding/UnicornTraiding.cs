@@ -285,7 +285,7 @@ namespace cAlgo.Robots
             else
             {
                 TimeSpan timeOfDay = Server.Time.TimeOfDay;
-                isClosedOnStart = (timeOfDay >= new TimeSpan(21, 45, 0) || timeOfDay < new TimeSpan(15, 45, 0));
+                isClosedOnStart = (timeOfDay >= new TimeSpan(19, 55, 0) || timeOfDay < new TimeSpan(14, 30, 0));
             }
 
             if (isClosedOnStart && _lastReplayDate.Date != Server.Time.Date)
@@ -579,9 +579,9 @@ namespace cAlgo.Robots
             }
             else
             {
-                // Fallback si pas de clé Alpaca : Session US Regular (15h45 - 21h45 Paris)
-                isPreMarketTrainingWindow = (timeOfDay >= new TimeSpan(15, 30, 0) && timeOfDay < new TimeSpan(15, 45, 0));
-                isSessionClosed = (timeOfDay >= new TimeSpan(21, 45, 0) || timeOfDay < new TimeSpan(15, 45, 0));
+                // Fallback si pas de clé Alpaca : Session US Regular UTC (14h30 - 19h55 UTC)
+                isPreMarketTrainingWindow = (timeOfDay >= new TimeSpan(14, 15, 0) && timeOfDay < new TimeSpan(14, 30, 0));
+                isSessionClosed = (timeOfDay >= new TimeSpan(19, 55, 0) || timeOfDay < new TimeSpan(14, 30, 0));
             }
 
             // Ré-entraînement Automatique Pré-Market Quotidien
