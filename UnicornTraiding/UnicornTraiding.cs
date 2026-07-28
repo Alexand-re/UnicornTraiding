@@ -11,6 +11,7 @@ namespace cAlgo.Robots
 {
     public struct SimpleBar
     {
+        public DateTime Timestamp { get; set; }
         public double Open { get; set; }
         public double High { get; set; }
         public double Low { get; set; }
@@ -333,8 +334,10 @@ namespace cAlgo.Robots
                                     int countBefore = result.Count;
                                     foreach (var item in spyBars.EnumerateArray())
                                     {
+                                        DateTime ts = item.TryGetProperty("t", out var tProp) ? tProp.GetDateTime() : DateTime.MinValue;
                                         result.Add(new SimpleBar
                                         {
+                                            Timestamp = ts,
                                             Open   = item.GetProperty("o").GetDouble(),
                                             High   = item.GetProperty("h").GetDouble(),
                                             Low    = item.GetProperty("l").GetDouble(),
@@ -358,7 +361,8 @@ namespace cAlgo.Robots
 
                         if (result.Count > 0)
                         {
-                            Print($"✅ {result.Count} barres 1m SPY chargées depuis Alpaca API !");
+                            result = result.OrderBy(b => b.Timestamp).ToList();
+                            Print($"✅ {result.Count} barres 1m SPY chargées et triées chronologiquement depuis Alpaca API !");
                             return result;
                         }
                         Print("⚠️ Aucune barre Alpaca. Repli sur barres locales cTrader...");
@@ -386,7 +390,8 @@ namespace cAlgo.Robots
 
             Print($"✅ {localBars.Count} barres M1 chargées depuis le serveur cTrader FTMO !");
 
-            foreach (var b in localBars) result.Add(new SimpleBar { Open = b.Open, High = b.High, Low = b.Low, Close = b.Close, TickVolume = b.TickVolume });
+            foreach (var b in localBars) result.Add(new SimpleBar { Timestamp = b.OpenTime, Open = b.Open, High = b.High, Low = b.Low, Close = b.Close, TickVolume = b.TickVolume });
+            result = result.OrderBy(b => b.Timestamp).ToList();
             return result;
         }
 
