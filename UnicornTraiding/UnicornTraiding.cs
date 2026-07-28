@@ -258,8 +258,8 @@ namespace cAlgo.Robots
         protected override void OnStart()
         {
             Print("==========================================================================");
-            Print($"🚀 DEMARRAGE BOT FTMO MLOFI SCALPER SPY (cTrader Automate)");
-            Print($"Target: {TargetSymbol} | Capital: ${InitialCapital:N0} | Risk/Trade: {RiskPerTradePct}% | Daily Breaker: {MaxDailyLossPct}%");
+            Print($"🚀 DEMARRAGE BOT FTMO UNICORN SCALPER ({Symbol.Name})");
+            Print($"Symbol: {Symbol.Name} | Capital: ${InitialCapital:N0} | Risk/Trade: {RiskPerTradePct}% | Daily Breaker: {MaxDailyLossPct}%");
             if (!string.IsNullOrEmpty(AlpacaKeyId)) Print("📡 Données Alpaca API activées pour l'entraînement ML !");
             Print("==========================================================================");
 
