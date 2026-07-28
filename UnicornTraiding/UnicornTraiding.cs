@@ -165,8 +165,8 @@ namespace cAlgo.Robots
         [Parameter("Risque Par Trade (%)", Group = "2. Risk Management FTMO", DefaultValue = 0.70)]
         public double RiskPerTradePct { get; set; } = 0.70;
 
-        [Parameter("Max Positions Simultanées", Group = "2. Risk Management FTMO", DefaultValue = 2)]
-        public int MaxConcurrentTrades { get; set; } = 2;
+        [Parameter("Max Positions Simultanées", Group = "2. Risk Management FTMO", DefaultValue = 3)]
+        public int MaxConcurrentTrades { get; set; } = 3;
 
         [Parameter("Disjoncteur Jour FTMO (%)", Group = "2. Risk Management FTMO", DefaultValue = 4.0)]
         public double MaxDailyLossPct { get; set; } = 4.0;
@@ -183,8 +183,8 @@ namespace cAlgo.Robots
         [Parameter("Multiplicateur StopLoss (x ATR)", Group = "3. Bracket Orders", DefaultValue = 1.0)]
         public double SlAtrMultiplier { get; set; } = 1.0;
 
-        [Parameter("Multiplicateur TakeProfit (x ATR)", Group = "3. Bracket Orders", DefaultValue = 1.6)]
-        public double TpAtrMultiplier { get; set; } = 1.6;
+        [Parameter("Multiplicateur TakeProfit (x ATR)", Group = "3. Bracket Orders", DefaultValue = 1.8)]
+        public double TpAtrMultiplier { get; set; } = 1.8;
 
         [Parameter("Utiliser Ordres Limite", Group = "3. Bracket Orders", DefaultValue = true)]
         public bool UseLimitOrders { get; set; } = true;
@@ -473,23 +473,47 @@ namespace cAlgo.Robots
                 Print($"⛔ DISJONCTEUR FTMO DÉCLENCHÉ : Perte Quotidienne = -{currentDailyDrawdownPct:F2}% (Limite = {MaxDailyLossPct}%). Vente totale & arrêt du trading pour la journée.");
             }
 
-            // 2. Ré-entraînement Automatique Pré-Market Quotidien à 15h30 (15 min avant l'ouverture US à 15h45)
+            // 2. Gestion Dynamique des Horaires via Alpaca Clock (Changements d'heure US/EU gérés automatiquement)
+            AlpacaClock alpacaClock = FetchAlpacaClock();
             TimeSpan timeOfDay = Server.Time.TimeOfDay;
-            if (EnableMlTraining && _lastTrainingDate.Date != Server.Time.Date && timeOfDay >= new TimeSpan(15, 30, 0) && timeOfDay < new TimeSpan(15, 45, 0))
+
+            bool isPreMarketTrainingWindow = false;
+            bool isSessionClosed = false;
+
+            if (alpacaClock != null)
+            {
+                float minutesToOpen = HelperMarket.NextMarkOpen(alpacaClock);
+                int minutesToClose = HelperMarket.NextMarkClose(alpacaClock);
+
+                // Ré-entraînement pré-market 15 min avant l'ouverture officielle Alpaca NextOpen
+                isPreMarketTrainingWindow = (!alpacaClock.IsOpen && minutesToOpen <= 15.0f && minutesToOpen > 0.0f);
+
+                // Session fermée si le marché est fermé ou si on est à moins de 15 min de NextClose
+                isSessionClosed = !alpacaClock.IsOpen || (minutesToClose <= 15);
+            }
+            else
+            {
+                // Fallback si pas de clé Alpaca : Session US Regular (15h45 - 21h45 Paris)
+                isPreMarketTrainingWindow = (timeOfDay >= new TimeSpan(15, 30, 0) && timeOfDay < new TimeSpan(15, 45, 0));
+                isSessionClosed = (timeOfDay >= new TimeSpan(21, 45, 0) || timeOfDay < new TimeSpan(15, 45, 0));
+            }
+
+            // Ré-entraînement Automatique Pré-Market Quotidien
+            if (EnableMlTraining && _lastTrainingDate.Date != Server.Time.Date && isPreMarketTrainingWindow)
             {
                 _lastTrainingDate = Server.Time.Date;
-                Print("🧠 [RE-TRAINING AUTOMATIQUE 15h30] Ré-entraînement pré-market quotidien du modèle FastTree ML...");
+                Print($"🧠 [RE-TRAINING AUTOMATIQUE DYNAMIQUE] Ré-entraînement pré-market quotidien du modèle FastTree ML...");
                 RunTrainingPhase();
             }
 
-            // 3. Clôture automatique hors-session (strictement réservé à la Session US Regular 15h45 - 21h45 Paris)
-            if (timeOfDay >= new TimeSpan(21, 45, 0) || timeOfDay < new TimeSpan(15, 45, 0))
+            // Clôture automatique hors-session pour éliminer les spreads larges
+            if (isSessionClosed)
             {
                 var activePositions = Positions.FindAll("MlofiFtmo");
                 foreach (var pos in activePositions)
                 {
                     ClosePosition(pos);
-                    Print($"🌙 CLÔTURE HORS-SESSION US : Position #{pos.Id} fermée à {timeOfDay:hh\\:mm} pour éviter les spreads larges.");
+                    Print($"🌙 CLÔTURE HORS-SESSION : Position #{pos.Id} fermée automatiquement.");
                 }
 
                 var pendingOrders = PendingOrders.Where(o => o.Label == "MlofiFtmo").ToArray();
@@ -498,7 +522,7 @@ namespace cAlgo.Robots
                     CancelPendingOrder(order);
                 }
 
-                if (timeOfDay >= new TimeSpan(21, 45, 0) || timeOfDay < new TimeSpan(15, 45, 0)) return;
+                return;
             }
 
             ManageBreakEven();
@@ -693,15 +717,103 @@ namespace cAlgo.Robots
                     if (pos.TradeType == TradeType.Buy && pos.StopLoss < pos.EntryPrice)
                     {
                         ModifyPosition(pos, pos.EntryPrice, pos.TakeProfit);
-                        Print($"🛡️ BREAK-EVEN APPLIQUÉ SUR POSITION #{pos.Id} (Buy @ {pos.EntryPrice})");
-                    }
-                    else if (pos.TradeType == TradeType.Sell && (pos.StopLoss == null || pos.StopLoss > pos.EntryPrice))
-                    {
                         ModifyPosition(pos, pos.EntryPrice, pos.TakeProfit);
                         Print($"🛡️ BREAK-EVEN APPLIQUÉ SUR POSITION #{pos.Id} (Sell @ {pos.EntryPrice})");
                     }
                 }
             }
+        }
+
+        private AlpacaClock FetchAlpacaClock()
+        {
+            if (string.IsNullOrEmpty(AlpacaKeyId) || string.IsNullOrEmpty(AlpacaSecretKey)) return null;
+            try
+            {
+                using (var client = new System.Net.Http.HttpClient())
+                {
+                    client.DefaultRequestHeaders.Add("APCA-API-KEY-ID", AlpacaKeyId.Trim());
+                    client.DefaultRequestHeaders.Add("APCA-API-SECRET-KEY", AlpacaSecretKey.Trim());
+                    client.Timeout = TimeSpan.FromSeconds(5);
+
+                    string url = "https://api.alpaca.markets/v2/clock";
+                    var response = client.GetAsync(url).Result;
+                    if (response.IsSuccessStatusCode)
+                    {
+                        string json = response.Content.ReadAsStringAsync().Result;
+                        using (var doc = System.Text.Json.JsonDocument.Parse(json))
+                        {
+                            var root = doc.RootElement;
+                            return new AlpacaClock
+                            {
+                                IsOpen = root.GetProperty("is_open").GetBoolean(),
+                                NextOpen = root.GetProperty("next_open").GetString() ?? "",
+                                NextClose = root.GetProperty("next_close").GetString() ?? "",
+                                Timestamp = root.GetProperty("timestamp").GetString() ?? ""
+                            };
+                        }
+                    }
+                }
+            }
+            catch { }
+            return null;
+        }
+    }
+
+    public class AlpacaClock
+    {
+        public bool IsOpen { get; set; }
+        public string NextOpen { get; set; } = "";
+        public string NextClose { get; set; } = "";
+        public string Timestamp { get; set; } = "";
+    }
+
+    public static class HelperMarket
+    {
+        public static int NextMarkClose(AlpacaClock clock)
+        {
+            if (clock == null || string.IsNullOrEmpty(clock.NextClose)) return 9999;
+            DateTime dateTime = DateTime.Parse(clock.NextClose, System.Globalization.CultureInfo.InvariantCulture).ToUniversalTime();
+            DateTime now = DateTime.UtcNow;
+            return (int)Math.Abs((dateTime - now).TotalMinutes);
+        }
+
+        public static float NextMarkOpen(AlpacaClock clock)
+        {
+            if (clock == null || string.IsNullOrEmpty(clock.NextOpen)) return 9999;
+            DateTime dateTime = DateTime.Parse(clock.NextOpen, System.Globalization.CultureInfo.InvariantCulture).ToUniversalTime();
+            DateTime now = DateTime.UtcNow;
+            return (float)Math.Abs((dateTime - now).TotalMinutes);
+        }
+
+        public static int NextTargetValueInSeconds(AlpacaClock clock, int seconds)
+        {
+            if (clock == null || string.IsNullOrEmpty(clock.Timestamp) || string.IsNullOrEmpty(clock.NextOpen)) return seconds;
+            System.DateTimeOffset dto = System.DateTimeOffset.Parse(clock.Timestamp, System.Globalization.CultureInfo.InvariantCulture);
+            DateTime currentDate = dto.UtcDateTime;
+            DateTime dateTime = DateTime.Parse(clock.NextOpen, System.Globalization.CultureInfo.InvariantCulture).ToUniversalTime();
+            TimeSpan openSpan = new TimeSpan(0, dateTime.Hour, dateTime.Minute, dateTime.Second);
+
+            int minutesPassed = (int)(currentDate.TimeOfDay - openSpan).TotalSeconds;
+            int halfHoursPassed = minutesPassed / seconds;
+            int minutesSincePrevious = minutesPassed - halfHoursPassed * seconds;
+            return seconds - minutesSincePrevious;
+        }
+
+        public static int NextTargetValueInSeconds(AlpacaClock clock)
+        {
+            if (clock == null || string.IsNullOrEmpty(clock.Timestamp)) return 60;
+            System.DateTimeOffset dto = System.DateTimeOffset.Parse(clock.Timestamp, System.Globalization.CultureInfo.InvariantCulture);
+            int secondsRemaining = 60 - dto.Second;
+            return secondsRemaining == 0 ? 60 : secondsRemaining;
+        }
+
+        public static (DateTime PreMarketStart, DateTime PreMarketEnd, DateTime PostMarketStart, DateTime PostMarketEnd) GetExtraMarketHours(DateTime nextOpenTime, DateTime nextCloseTime)
+        {
+            DateTime preMarketStart = nextOpenTime.AddHours(-4);
+            DateTime preMarketEnd = nextOpenTime;
+            DateTime postMarketStart = nextCloseTime;
+            DateTime postMarketEnd = nextCloseTime.AddHours(4);
+            return (preMarketStart, preMarketEnd, postMarketStart, postMarketEnd);
         }
     }
 }
