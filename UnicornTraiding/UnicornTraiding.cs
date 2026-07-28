@@ -713,7 +713,16 @@ namespace cAlgo.Robots
             }
 
             double currentOverallDrawdownPct = (_peakEquity - Account.Equity) / _peakEquity * 100.0;
+            double dailyDrawdownPct = (_dailyStartEquity - Account.Equity) / _dailyStartEquity * 100.0;
             double effectiveRiskPct = (currentOverallDrawdownPct >= MaxDrawdownPct) ? RiskPerTradePct * 0.5 : RiskPerTradePct;
+
+            // Filtre préventif : Ne pas ouvrir de trade si un Stop Loss potentiel ferait franchir la limite de perte quotidienne
+            if (dailyDrawdownPct + effectiveRiskPct >= MaxDailyLossPct)
+            {
+                Print($"🛡️ FILTRE PRÉVENTIF FTMO : Perte actuelle (-{dailyDrawdownPct:F2}%) + Risque du trade ({effectiveRiskPct:F2}%) >= Limite Jour ({MaxDailyLossPct}%). Trade ignoré pour protéger le compte !");
+                return;
+            }
+
             double riskBudgetDollars = Account.Equity * (effectiveRiskPct / 100.0);
 
             // Ratio d'échelle si l'analyse est faite sur SPY et l'exécution sur le symbole local cTrader (ex: US500.cash)
