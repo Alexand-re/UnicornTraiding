@@ -199,8 +199,8 @@ namespace cAlgo.Robots
         [Parameter("Capital Initial FTMO ($)", Group = "2. Risk Management FTMO", DefaultValue = 100000.0)]
         public double InitialCapital { get; set; } = 100000.0;
 
-        [Parameter("Risque Par Trade (%)", Group = "2. Risk Management FTMO", DefaultValue = 0.70)]
-        public double RiskPerTradePct { get; set; } = 0.70;
+        [Parameter("Risque Par Trade (%)", Group = "2. Risk Management FTMO", DefaultValue = 0.95)]
+        public double RiskPerTradePct { get; set; } = 0.95;
 
         [Parameter("Max Positions Simultanées", Group = "2. Risk Management FTMO", DefaultValue = 3)]
         public int MaxConcurrentTrades { get; set; } = 3;
@@ -220,8 +220,8 @@ namespace cAlgo.Robots
         [Parameter("Multiplicateur StopLoss (x ATR)", Group = "3. Bracket Orders", DefaultValue = 1.0)]
         public double SlAtrMultiplier { get; set; } = 1.0;
 
-        [Parameter("Multiplicateur TakeProfit (x ATR)", Group = "3. Bracket Orders", DefaultValue = 1.8)]
-        public double TpAtrMultiplier { get; set; } = 1.8;
+        [Parameter("Multiplicateur TakeProfit (x ATR)", Group = "3. Bracket Orders", DefaultValue = 2.0)]
+        public double TpAtrMultiplier { get; set; } = 2.0;
 
         [Parameter("Utiliser Ordres Limite", Group = "3. Bracket Orders", DefaultValue = true)]
         public bool UseLimitOrders { get; set; } = true;
