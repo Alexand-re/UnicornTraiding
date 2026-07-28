@@ -354,6 +354,16 @@ namespace cAlgo.Robots
             }
 
             var localBars = MarketData.GetBars(TimeFrame.Minute);
+            Print($"📥 Chargement de l'historique M1 complet cTrader (Cible: {TrainingHistoryBars} barres)...");
+            
+            while (localBars.Count < TrainingHistoryBars)
+            {
+                int loaded = localBars.LoadMoreHistory();
+                if (loaded == 0) break;
+            }
+
+            Print($"✅ {localBars.Count} barres M1 chargées depuis le serveur cTrader FTMO !");
+
             foreach (var b in localBars) result.Add(new SimpleBar { Open = b.Open, High = b.High, Low = b.Low, Close = b.Close, TickVolume = b.TickVolume });
             return result;
         }
