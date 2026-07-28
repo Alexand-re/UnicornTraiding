@@ -274,24 +274,13 @@ namespace cAlgo.Robots
                 RunTrainingPhase();
             }
 
-            // Vérification si le marché est déjà fermé lors du lancement du bot
-            AlpacaClock alpacaClock = FetchAlpacaClock();
-            bool isClosedOnStart = false;
-            if (alpacaClock != null)
-            {
-                int minutesToClose = HelperMarket.NextMarkClose(alpacaClock);
-                isClosedOnStart = !alpacaClock.IsOpen || (minutesToClose <= 15);
-            }
-            else
-            {
-                TimeSpan timeOfDay = Server.Time.TimeOfDay;
-                isClosedOnStart = (timeOfDay >= new TimeSpan(19, 55, 0) || timeOfDay < new TimeSpan(14, 30, 0));
-            }
+            // Vérification native cTrader si le marché est fermé lors du lancement
+            bool isClosedOnStart = !Symbol.MarketHours.IsOpened() || Symbol.MarketHours.TimeTillClose() <= TimeSpan.FromMinutes(5);
 
             if (isClosedOnStart && _lastReplayDate.Date != Server.Time.Date)
             {
                 _lastReplayDate = Server.Time.Date;
-                Print("🌙 [LANCEMENT HORS-SESSION] Le marché est actuellement fermé. Exécution immédiate du Replay Backtest du jour...");
+                Print($"🌙 [LANCEMENT HORS-SESSION cTrader] Le marché {Symbol.Name} est fermé (IsOpened: {Symbol.MarketHours.IsOpened()}). Exécution immédiate du Replay Backtest...");
                 RunEndOfDayReplayBacktest();
             }
         }
@@ -559,38 +548,8 @@ namespace cAlgo.Robots
                 return;
             }
 
-            // 2. Gestion Dynamique des Horaires via Alpaca Clock (Changements d'heure US/EU gérés automatiquement)
-            AlpacaClock alpacaClock = FetchAlpacaClock();
-            TimeSpan timeOfDay = Server.Time.TimeOfDay;
-
-            bool isPreMarketTrainingWindow = false;
-            bool isSessionClosed = false;
-
-            if (alpacaClock != null)
-            {
-                float minutesToOpen = HelperMarket.NextMarkOpen(alpacaClock);
-                int minutesToClose = HelperMarket.NextMarkClose(alpacaClock);
-
-                // Ré-entraînement pré-market 15 min avant l'ouverture officielle Alpaca NextOpen
-                isPreMarketTrainingWindow = (!alpacaClock.IsOpen && minutesToOpen <= 15.0f && minutesToOpen > 0.0f);
-
-                // Session fermée si le marché est fermé ou si on est à moins de 15 min de NextClose
-                isSessionClosed = !alpacaClock.IsOpen || (minutesToClose <= 15);
-            }
-            else
-            {
-                // Fallback si pas de clé Alpaca : Session US Regular UTC (14h30 - 19h55 UTC)
-                isPreMarketTrainingWindow = (timeOfDay >= new TimeSpan(14, 15, 0) && timeOfDay < new TimeSpan(14, 30, 0));
-                isSessionClosed = (timeOfDay >= new TimeSpan(19, 55, 0) || timeOfDay < new TimeSpan(14, 30, 0));
-            }
-
-            // Ré-entraînement Automatique Pré-Market Quotidien
-            if (EnableMlTraining && _lastTrainingDate.Date != Server.Time.Date && isPreMarketTrainingWindow)
-            {
-                _lastTrainingDate = Server.Time.Date;
-                Print($"🧠 [RE-TRAINING AUTOMATIQUE DYNAMIQUE] Ré-entraînement pré-market quotidien du modèle FastTree ML...");
-                RunTrainingPhase();
-            }
+            // Vérification native cTrader des horaires de session du symbole
+            bool isSessionClosed = !Symbol.MarketHours.IsOpened() || Symbol.MarketHours.TimeTillClose() <= TimeSpan.FromMinutes(5);
 
             // Clôture automatique hors-session pour éliminer les spreads larges
             if (isSessionClosed)
