@@ -223,8 +223,8 @@ namespace cAlgo.Robots
         [Parameter("Multiplicateur TakeProfit (x ATR)", Group = "3. Bracket Orders", DefaultValue = 2.0)]
         public double TpAtrMultiplier { get; set; } = 2.0;
 
-        [Parameter("Utiliser Ordres Limite", Group = "3. Bracket Orders", DefaultValue = true)]
-        public bool UseLimitOrders { get; set; } = true;
+        [Parameter("Utiliser Ordres Limite", Group = "3. Bracket Orders", DefaultValue = false)]
+        public bool UseLimitOrders { get; set; } = false;
 
         [Parameter("Slippage / Buffer Max (Pips)", Group = "3. Bracket Orders", DefaultValue = 0.5)]
         public double MaxSlippagePips { get; set; } = 0.5;
@@ -738,7 +738,8 @@ namespace cAlgo.Robots
 
             if (UseLimitOrders)
             {
-                double targetPrice = isBuySetup ? (Symbol.Ask + (MaxSlippagePips * Symbol.PipSize)) : (Symbol.Bid - (MaxSlippagePips * Symbol.PipSize));
+                // Buy Limit à Ask - Buffer, Sell Limit à Bid + Buffer pour être au-dessus du marché
+                double targetPrice = isBuySetup ? (Symbol.Ask - (MaxSlippagePips * Symbol.PipSize)) : (Symbol.Ask + (MaxSlippagePips * Symbol.PipSize));
                 DateTime expirationTime = Server.Time.AddMinutes(LimitOrderTimeoutMinutes);
                 Print($"📌 PLACEMENT ORDRE LIMITE : {tradeType} @ {targetPrice:F2} (Slippage Buffer = {MaxSlippagePips} pips, Expiration = {expirationTime:HH\\:mm\\:ss})");
                 PlaceLimitOrder(tradeType, Symbol.Name, volumeLots, targetPrice, "MlofiFtmo", slPips, tpPips, expirationTime);
