@@ -508,8 +508,18 @@ namespace cAlgo.Robots
             if (Server.Time.Date != _currentDay)
             {
                 _currentDay = Server.Time.Date;
-                _dailyStartEquity = Account.Equity;
-                Print($"☀️ Nouveau jour FTMO : Equity de Départ = ${_dailyStartEquity:N2}");
+
+                double todayRealizedPnL = 0;
+                foreach (var trade in History)
+                {
+                    if (trade.ClosingTime >= _currentDay)
+                    {
+                        todayRealizedPnL += trade.NetProfit;
+                    }
+                }
+
+                _dailyStartEquity = Account.Balance - todayRealizedPnL;
+                Print($"☀️ Nouveau jour FTMO : Solde de Départ 00:00 UTC = ${_dailyStartEquity:N2} | PnL Déjà Réalisé Aujourd'hui = ${todayRealizedPnL:+$#,##0.00;-$#,##0.00}");
             }
 
             if (Account.Equity > _peakEquity) _peakEquity = Account.Equity;
@@ -523,7 +533,8 @@ namespace cAlgo.Robots
                     ClosePosition(pos);
                     Print($"🚨 DISJONCTEUR FTMO ACTIVÉ : Position #{pos.Id} fermée d'urgence à -{currentDailyDrawdownPct:F2}%.");
                 }
-                Print($"⛔ DISJONCTEUR FTMO DÉCLENCHÉ : Perte Quotidienne = -{currentDailyDrawdownPct:F2}% (Limite = {MaxDailyLossPct}%). Vente totale & arrêt du trading pour la journée.");
+                Print($"⛔ DISJONCTEUR FTMO DÉCLENCHÉ : Perte Quotidienne Cumulée = -{currentDailyDrawdownPct:F2}% (Limite = {MaxDailyLossPct}%). Vente totale & arrêt du trading pour la journée.");
+                return;
             }
 
             // 2. Gestion Dynamique des Horaires via Alpaca Clock (Changements d'heure US/EU gérés automatiquement)
