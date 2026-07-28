@@ -653,9 +653,10 @@ namespace cAlgo.Robots
                 currentBarVolume = bar.TickVolume > 0 ? bar.TickVolume : 1.0;
 
                 double range = Math.Max(bar.High - bar.Low, 0.01);
+                double effectiveVol = bar.TickVolume > 1.0 ? bar.TickVolume : (range * 1000.0);
                 double closePos = (currentPrice - bar.Low) / range;
-                double buyVol = bar.TickVolume * closePos;
-                double sellVol = bar.TickVolume * (1.0 - closePos);
+                double buyVol = effectiveVol * closePos;
+                double sellVol = effectiveVol * (1.0 - closePos);
                 mlofiScore = (buyVol + sellVol > 0) ? (buyVol - sellVol) / (buyVol + sellVol) : 0.0;
 
                 double sum20 = 0, sum50 = 0, sumVol = 0;
@@ -744,8 +745,16 @@ namespace cAlgo.Robots
             double slDistance = atr1m * SlAtrMultiplier * ratio;
             double tpDistance = atr1m * TpAtrMultiplier * ratio;
 
-            if (slDistance <= (0.05 * ratio)) slDistance = 0.50 * ratio;
-            if (tpDistance <= (0.05 * ratio)) tpDistance = 1.00 * ratio;
+            if (Symbol.Ask > 1000.0)
+            {
+                if (slDistance < 2.50) slDistance = 2.50;
+                if (tpDistance < 4.00) tpDistance = 4.00;
+            }
+            else
+            {
+                if (slDistance <= (0.05 * ratio)) slDistance = 0.50 * ratio;
+                if (tpDistance <= (0.05 * ratio)) tpDistance = 1.00 * ratio;
+            }
 
             double volumeLots = Symbol.VolumeInUnitsToQuantity(riskBudgetDollars / slDistance);
             volumeLots = Symbol.NormalizeVolumeInUnits(volumeLots, RoundingMode.ToNearest);
