@@ -160,7 +160,15 @@ namespace cAlgo.Robots
 
             _predEngineFastTree = _mlContext.Model.CreatePredictionEngine<MlofiMlFeatureData, MlofiMlPredictionData>(_modelFastTree);
             _predEngineFastForest = _mlContext.Model.CreatePredictionEngine<MlofiMlFeatureData, MlofiMlPredictionData>(_modelFastForest);
-            IsTrained = true;
+            if (metrics.PositivePrecision < 0.30 || metrics.AreaUnderRocCurve < 0.50)
+            {
+                log($"⚠️ MODÈLE IA REJETÉ : Précision trop faible ({metrics.PositivePrecision * 100:F1}%) ou AUC faible ({metrics.AreaUnderRocCurve:F4}). Mode MLOFI Filtré activé.");
+                IsTrained = false;
+            }
+            else
+            {
+                IsTrained = true;
+            }
 
             return (metrics.Accuracy, metrics.AreaUnderRocCurve, metrics.PositivePrecision, trainingData.Count);
         }
@@ -169,7 +177,7 @@ namespace cAlgo.Robots
         {
             if (!IsTrained || _predEngineFastTree == null || _predEngineFastForest == null)
             {
-                return new MlofiMlPredictionData { PredictedLabel = true, Probability = 0.5f, Score = 0f };
+                return new MlofiMlPredictionData { PredictedLabel = false, Probability = 0.0f, Score = 0f };
             }
 
             var predTree = _predEngineFastTree.Predict(sample);
@@ -406,9 +414,10 @@ namespace cAlgo.Robots
                 double closePrice = bar.Close;
 
                 double range = Math.Max(bar.High - bar.Low, 0.01);
+                double effectiveVol = bar.TickVolume > 1.0 ? bar.TickVolume : (range * 1000.0);
                 double closePos = (closePrice - bar.Low) / range;
-                double buyVol = bar.TickVolume * closePos;
-                double sellVol = bar.TickVolume * (1.0 - closePos);
+                double buyVol = effectiveVol * closePos;
+                double sellVol = effectiveVol * (1.0 - closePos);
                 double mlofiScore = (buyVol + sellVol > 0) ? (buyVol - sellVol) / (buyVol + sellVol) : 0.0;
 
                 double sum20 = 0, sum50 = 0, sumVol = 0;
