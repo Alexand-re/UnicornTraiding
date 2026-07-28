@@ -273,6 +273,27 @@ namespace cAlgo.Robots
                 _lastTrainingDate = Server.Time.Date;
                 RunTrainingPhase();
             }
+
+            // Vérification si le marché est déjà fermé lors du lancement du bot
+            AlpacaClock alpacaClock = FetchAlpacaClock();
+            bool isClosedOnStart = false;
+            if (alpacaClock != null)
+            {
+                int minutesToClose = HelperMarket.NextMarkClose(alpacaClock);
+                isClosedOnStart = !alpacaClock.IsOpen || (minutesToClose <= 15);
+            }
+            else
+            {
+                TimeSpan timeOfDay = Server.Time.TimeOfDay;
+                isClosedOnStart = (timeOfDay >= new TimeSpan(21, 45, 0) || timeOfDay < new TimeSpan(15, 45, 0));
+            }
+
+            if (isClosedOnStart && _lastReplayDate.Date != Server.Time.Date)
+            {
+                _lastReplayDate = Server.Time.Date;
+                Print("🌙 [LANCEMENT HORS-SESSION] Le marché est actuellement fermé. Exécution immédiate du Replay Backtest du jour...");
+                RunEndOfDayReplayBacktest();
+            }
         }
 
         private List<SimpleBar> FetchBarsForTraining()
