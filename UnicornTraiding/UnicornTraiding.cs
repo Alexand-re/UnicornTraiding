@@ -816,8 +816,18 @@ namespace cAlgo.Robots
             Print($"📊 [BACKTEST DYNAMIQUE REPLAY DU JOUR - {Server.Time:yyyy-MM-dd}]");
             Print($"==========================================================================");
 
-            var todaysBars = Bars.Where(b => b.OpenTime.Date == Server.Time.Date).ToList();
-            if (todaysBars.Count < 10)
+            // Filtrer uniquement la session régulière US (14h30 - 19h55 UTC)
+            var todaysBars = Bars.Where(b => b.OpenTime.Date == Server.Time.Date && 
+                                            b.OpenTime.TimeOfDay >= new TimeSpan(14, 30, 0) && 
+                                            b.OpenTime.TimeOfDay < new TimeSpan(19, 55, 0)).ToList();
+
+            if (todaysBars.Count < 50)
+            {
+                // Fallback sur les 390 dernières barres si moins de 50 barres trouvées
+                todaysBars = Bars.TakeLast(390).ToList();
+            }
+
+            if (todaysBars.Count < 50)
             {
                 Print("⚠️ Pas assez de barres sur la journée courante pour la simulation.");
                 Print($"==========================================================================");
@@ -838,8 +848,9 @@ namespace cAlgo.Robots
             double tpPrice = 0;
             bool isBreakEven = false;
             double posQty = 0;
+            double pipValue = Symbol.PipValue > 0 ? Symbol.PipValue : 1.0;
 
-            for (int i = 14; i < todaysBars.Count; i++)
+            for (int i = 50; i < todaysBars.Count; i++)
             {
                 var bar = todaysBars[i];
                 double closePrice = bar.Close;
@@ -860,8 +871,10 @@ namespace cAlgo.Robots
 
                     if (hitTP || hitSL)
                     {
-                        double pnl = posSide == "buy" ? (tpPrice - entryPrice) * posQty : (entryPrice - slPrice) * posQty;
-                        if (hitSL) pnl = isBreakEven ? 0 : (posSide == "buy" ? (slPrice - entryPrice) * posQty : (entryPrice - slPrice) * posQty);
+                        double pnlPoints = posSide == "buy" ? (tpPrice - entryPrice) : (entryPrice - slPrice);
+                        if (hitSL) pnlPoints = isBreakEven ? 0 : (posSide == "buy" ? (slPrice - entryPrice) : (entryPrice - slPrice));
+
+                        double pnl = pnlPoints * posQty * pipValue;
 
                         simCapital += pnl;
                         totalTrades++;
@@ -883,10 +896,36 @@ namespace cAlgo.Robots
                     double sellVol = bar.TickVolume * (1.0 - closePos);
                     double mlofiScore = (buyVol + sellVol > 0) ? (buyVol - sellVol) / (buyVol + sellVol) : 0.0;
 
-                    double sum20 = 0, sumVol = 0;
-                    for (int k = 0; k < Math.Min(20, i); k++) { sum20 += todaysBars[i - k].Close; sumVol += todaysBars[i - k].TickVolume; }
-                    double ema20 = sum20 / Math.Min(20, i);
-                    double avgVolume = sumVol / Math.Min(20, i);
+                    double sum20 = 0, sum50 = 0, sumVol = 0;
+                    for (int k = 0; k < 50; k++)
+                    {
+                        double c = todaysBars[i - k].Close;
+                        double v = todaysBars[i - k].TickVolume;
+                        if (k < 20) { sum20 += c; sumVol += v; }
+                        sum50 += c;
+                    }
+                    double ema20 = sum20 / 20.0;
+                    double ema50 = sum50 / 50.0;
+                    double avgVolume = sumVol / 20.0;
+
+                    double gains = 0, losses = 0;
+                    for (int k = 0; k < 14; k++)
+                    {
+                        double diff = todaysBars[i - k].Close - todaysBars[i - k - 1].Close;
+                        if (diff > 0) gains += diff; else losses -= diff;
+                    }
+                    double rs = losses > 0 ? gains / losses : 1.0;
+                    double rsi14 = 100.0 - (100.0 / (1.0 + rs));
+
+                    double trSum = 0;
+                    for (int k = 0; k < 14; k++)
+                    {
+                        double tr1 = todaysBars[i - k].High - todaysBars[i - k].Low;
+                        double tr2 = Math.Abs(todaysBars[i - k].High - todaysBars[i - k - 1].Close);
+                        double tr3 = Math.Abs(todaysBars[i - k].Low - todaysBars[i - k - 1].Close);
+                        trSum += Math.Max(tr1, Math.Max(tr2, tr3));
+                    }
+                    double atr1m = trSum / 14.0;
 
                     bool isVolumeSpike = bar.TickVolume >= avgVolume * 1.1;
                     bool isBuySetup = closePrice > ema20 && mlofiScore >= MlofiThreshold && isVolumeSpike;
@@ -894,21 +933,24 @@ namespace cAlgo.Robots
 
                     if (isBuySetup || isSellSetup)
                     {
-                        double trSum = 0;
-                        int atrPeriod = Math.Min(14, i);
-                        for (int k = 0; k < atrPeriod; k++)
+                        // Validation obligatoire par le modèle ML FastTree / FastForest entraîné
+                        if (_mlPredictor != null && _mlPredictor.IsTrained)
                         {
-                            double tr1 = todaysBars[i - k].High - todaysBars[i - k].Low;
-                            double tr2 = Math.Abs(todaysBars[i - k].High - todaysBars[i - k - 1].Close);
-                            double tr3 = Math.Abs(todaysBars[i - k].Low - todaysBars[i - k - 1].Close);
-                            trSum += Math.Max(tr1, Math.Max(tr2, tr3));
+                            var featureSample = MlofiMlFeatureExtractor.ExtractFeatures(
+                                mlofiScore, closePrice, ema20, 0, ema20, ema50, atr1m, 0, avgVolume, rsi14, label: false);
+
+                            var prediction = _mlPredictor.Predict(featureSample);
+                            if (prediction.Probability < 0.20f)
+                            {
+                                continue; // Filtré par l'IA ML !
+                            }
                         }
-                        double atr1m = trSum / atrPeriod;
+
                         double slDist = Math.Max(atr1m * SlAtrMultiplier, 0.50);
                         double tpDist = Math.Max(atr1m * TpAtrMultiplier, 1.00);
 
                         double riskDollars = simCapital * (RiskPerTradePct / 100.0);
-                        posQty = Math.Max(1.0, Math.Floor(riskDollars / slDist));
+                        posQty = Math.Max(0.01, Math.Floor(riskDollars / (slDist * pipValue) * 100.0) / 100.0);
 
                         inPos = true;
                         posSide = isBuySetup ? "buy" : "sell";
