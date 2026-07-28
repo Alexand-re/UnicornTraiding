@@ -640,12 +640,12 @@ namespace cAlgo.Robots
             else
             {
                 var bars1m = MarketData.GetBars(TimeFrame.Minute);
-                int idx = bars1m.Count - 1;
+                int idx = bars1m.Count >= 2 ? bars1m.Count - 2 : bars1m.Count - 1;
                 if (idx < 50) return;
 
                 var bar = bars1m[idx];
-                currentPrice = bar.Close;
-                currentBarVolume = bar.TickVolume;
+                currentPrice = Symbol.Ask;
+                currentBarVolume = bar.TickVolume > 0 ? bar.TickVolume : 1.0;
 
                 double range = Math.Max(bar.High - bar.Low, 0.01);
                 double closePos = (currentPrice - bar.Low) / range;
