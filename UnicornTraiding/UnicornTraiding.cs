@@ -30,6 +30,9 @@ namespace cAlgo.Robots
         public float NormalizedAtr { get; set; }
         public float VolumeRatio { get; set; }
         public float Rsi14 { get; set; }
+        public float MacdHist { get; set; }
+        public float BollingerWidth { get; set; }
+        public float MicroSlope5 { get; set; }
         public bool Label { get; set; }
     }
 
@@ -58,6 +61,9 @@ namespace cAlgo.Robots
             double currentVolume,
             double avgVolume20,
             double rsi14,
+            double macdHist = 0.0,
+            double bbWidth = 0.01,
+            double microSlope5 = 0.0,
             bool label = false)
         {
             float vwapDist = vwap > 0 ? (float)((currentPrice - vwap) / vwap * 100.0) : 0f;
@@ -74,6 +80,9 @@ namespace cAlgo.Robots
                 NormalizedAtr = normAtr,
                 VolumeRatio = volRatio,
                 Rsi14 = (float)rsi14,
+                MacdHist = (float)macdHist,
+                BollingerWidth = (float)bbWidth,
+                MicroSlope5 = (float)microSlope5,
                 Label = label
             };
         }
@@ -114,14 +123,17 @@ namespace cAlgo.Robots
                     nameof(MlofiMlFeatureData.EmaRatio),
                     nameof(MlofiMlFeatureData.NormalizedAtr),
                     nameof(MlofiMlFeatureData.VolumeRatio),
-                    nameof(MlofiMlFeatureData.Rsi14))
+                    nameof(MlofiMlFeatureData.Rsi14),
+                    nameof(MlofiMlFeatureData.MacdHist),
+                    nameof(MlofiMlFeatureData.BollingerWidth),
+                    nameof(MlofiMlFeatureData.MicroSlope5))
                 .Append(_mlContext.BinaryClassification.Trainers.FastTree(
                     new FastTreeBinaryTrainer.Options
                     {
-                        NumberOfLeaves = 15,
-                        NumberOfTrees = 100,
+                        NumberOfLeaves = 20,
+                        NumberOfTrees = 150,
                         MinimumExampleCountPerLeaf = 10,
-                        LearningRate = 0.05,
+                        LearningRate = 0.03,
                         LabelColumnName = nameof(MlofiMlFeatureData.Label),
                         FeatureColumnName = "Features"
                     }));
@@ -397,7 +409,7 @@ namespace cAlgo.Robots
                     else { if (fBar.Low <= tp) { label = true; break; } if (fBar.High >= sl) break; }
                 }
 
-                trainingSamples.Add(MlofiMlFeatureExtractor.ExtractFeatures(mlofiScore, closePrice, ema20, 0, ema20, ema50, atr1m, bar.TickVolume, avgVolume, rsi14, label));
+                trainingSamples.Add(MlofiMlFeatureExtractor.ExtractFeatures(mlofiScore, closePrice, ema20, 0, ema20, ema50, atr1m, bar.TickVolume, avgVolume, rsi14, label: label));
             }
 
             var res = _mlPredictor.TrainModel(trainingSamples, Print);
@@ -654,7 +666,7 @@ namespace cAlgo.Robots
             if (_mlPredictor != null && _mlPredictor.IsTrained)
             {
                 var featureSample = MlofiMlFeatureExtractor.ExtractFeatures(
-                    mlofiScore, currentPrice, ema20, 0, ema20, ema50, atr1m, 0, avgVolume, rsi14, false);
+                    mlofiScore, currentPrice, ema20, 0, ema20, ema50, atr1m, 0, avgVolume, rsi14, label: false);
 
                 var prediction = _mlPredictor.Predict(featureSample);
 
