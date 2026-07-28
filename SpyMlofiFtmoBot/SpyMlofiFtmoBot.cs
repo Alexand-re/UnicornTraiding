@@ -758,8 +758,8 @@ namespace cAlgo.Robots
                 double currentProfitPips = pos.Pips;
                 double tpDistancePips = Math.Abs(pos.TakeProfit.GetValueOrDefault() - pos.EntryPrice) / Symbol.PipSize;
 
-                // Si le profit atteint 75% de la cible TP, bouger le Stop Loss à Break-Even
-                if (currentProfitPips >= tpDistancePips * 0.75)
+                // Si le profit atteint 50% de la cible TP, bouger le Stop Loss à Break-Even pour sécuriser le trade
+                if (currentProfitPips >= tpDistancePips * 0.50)
                 {
                     if (pos.TradeType == TradeType.Buy && pos.StopLoss < pos.EntryPrice)
                     {
@@ -768,6 +768,8 @@ namespace cAlgo.Robots
                     }
                     else if (pos.TradeType == TradeType.Sell && (pos.StopLoss == null || pos.StopLoss > pos.EntryPrice))
                     {
+                        ModifyPosition(pos, pos.EntryPrice, pos.TakeProfit);
+                        Print($"🛡️ BREAK-EVEN APPLIQUÉ SUR POSITION #{pos.Id} (Sell @ {pos.EntryPrice})");
                     }
                 }
             }
