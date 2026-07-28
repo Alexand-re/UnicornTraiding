@@ -236,8 +236,8 @@ namespace cAlgo.Robots
         [Parameter("Activer Apprentissage ML FastTree", Group = "4. Machine Learning", DefaultValue = true)]
         public bool EnableMlTraining { get; set; } = true;
 
-        [Parameter("Nombre de Barres Entraînement", Group = "4. Machine Learning", DefaultValue = 15000)]
-        public int TrainingHistoryBars { get; set; } = 15000;
+        [Parameter("Nombre de Barres Entraînement", Group = "4. Machine Learning", DefaultValue = 60000)]
+        public int TrainingHistoryBars { get; set; } = 60000;
 
         [Parameter("Alpaca Key ID (Optionnel)", Group = "5. Alpaca Historical Data", DefaultValue = "")]
         public string AlpacaKeyId { get; set; } = "";
@@ -361,7 +361,7 @@ namespace cAlgo.Robots
                 Print($"⚠️ ATTENTION : Votre graphique cTrader est réglé sur {TimeFrame}. Pour permettre à cTrader de charger l'historique M1 complet (15 000 barres), réglez la période de votre graphique cTrader sur M1 !");
             }
 
-            for (int i = 0; i < 30 && localBars.Count < TrainingHistoryBars; i++)
+            for (int i = 0; i < 120 && localBars.Count < TrainingHistoryBars; i++)
             {
                 int loaded = localBars.LoadMoreHistory();
                 if (loaded == 0) break;
