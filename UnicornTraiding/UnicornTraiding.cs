@@ -354,12 +354,29 @@ namespace cAlgo.Robots
             }
 
             var localBars = MarketData.GetBars(TimeFrame.Minute);
-            Print($"📥 Chargement de l'historique M1 complet cTrader (Cible: {TrainingHistoryBars} barres)...");
-            
-            while (localBars.Count < TrainingHistoryBars)
+            Print($"📥 Chargement automatique de l'historique M1 FTMO ({TrainingHistoryBars} barres)...");
+
+            var autoEvent = new System.Threading.AutoResetEvent(false);
+
+            int prevCount = 0;
+            Action<BarsHistoryLoadedEventArgs> onLoaded = null!;
+            onLoaded = (args) =>
             {
-                int loaded = localBars.LoadMoreHistory();
-                if (loaded == 0) break;
+                if (localBars.Count >= TrainingHistoryBars || localBars.Count == prevCount)
+                {
+                    autoEvent.Set();
+                }
+                else
+                {
+                    prevCount = localBars.Count;
+                    localBars.LoadMoreHistoryAsync(onLoaded);
+                }
+            };
+
+            if (localBars.Count < TrainingHistoryBars)
+            {
+                localBars.LoadMoreHistoryAsync(onLoaded);
+                autoEvent.WaitOne(8000);
             }
 
             Print($"✅ {localBars.Count} barres M1 chargées depuis le serveur cTrader FTMO !");
