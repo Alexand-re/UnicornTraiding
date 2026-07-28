@@ -213,6 +213,7 @@ namespace cAlgo.Robots
         private MlofiMlPredictorEngine _mlPredictor = null!;
         private double _dailyStartEquity;
         private DateTime _currentDay = DateTime.MinValue;
+        private DateTime _lastTrainingDate = DateTime.MinValue;
         private double _peakEquity;
 
         protected override void OnStart()
@@ -229,6 +230,7 @@ namespace cAlgo.Robots
 
             if (EnableMlTraining)
             {
+                _lastTrainingDate = Server.Time.Date;
                 RunTrainingPhase();
             }
         }
@@ -475,8 +477,16 @@ namespace cAlgo.Robots
                 return;
             }
 
-            // 2. Clôture automatique hors-session (strictement réservé à la Session US Regular 15h45 - 21h45 Paris)
+            // 2. Ré-entraînement Automatique Pré-Market Quotidien à 15h30 (15 min avant l'ouverture US à 15h45)
             TimeSpan timeOfDay = Server.Time.TimeOfDay;
+            if (EnableMlTraining && _lastTrainingDate.Date != Server.Time.Date && timeOfDay >= new TimeSpan(15, 30, 0) && timeOfDay < new TimeSpan(15, 45, 0))
+            {
+                _lastTrainingDate = Server.Time.Date;
+                Print("🧠 [RE-TRAINING AUTOMATIQUE 15h30] Ré-entraînement pré-market quotidien du modèle FastTree ML...");
+                RunTrainingPhase();
+            }
+
+            // 3. Clôture automatique hors-session (strictement réservé à la Session US Regular 15h45 - 21h45 Paris)
             if (timeOfDay >= new TimeSpan(21, 45, 0) || timeOfDay < new TimeSpan(15, 45, 0))
             {
                 var activePositions = Positions.FindAll("MlofiFtmo");
