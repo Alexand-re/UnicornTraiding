@@ -274,15 +274,10 @@ namespace cAlgo.Robots
                 RunTrainingPhase();
             }
 
-            // Vérification native cTrader si le marché est fermé lors du lancement
-            bool isClosedOnStart = !Symbol.MarketHours.IsOpened() || Symbol.MarketHours.TimeTillClose() <= TimeSpan.FromMinutes(5);
-
-            if (isClosedOnStart && _lastReplayDate.Date != Server.Time.Date)
-            {
-                _lastReplayDate = Server.Time.Date;
-                Print($"🌙 [LANCEMENT HORS-SESSION cTrader] Le marché {Symbol.Name} est fermé (IsOpened: {Symbol.MarketHours.IsOpened()}). Exécution immédiate du Replay Backtest...");
-                RunEndOfDayReplayBacktest();
-            }
+            // Exécution systématique du Replay Backtest du jour lors du lancement du bot
+            _lastReplayDate = Server.Time.Date;
+            Print("📊 [DEMARRAGE BOT] Exécution du Replay Backtest de la journée avec le modèle IA ré-entraîné...");
+            RunEndOfDayReplayBacktest();
         }
 
         private List<SimpleBar> FetchBarsForTraining()
