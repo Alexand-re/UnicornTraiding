@@ -475,17 +475,24 @@ namespace cAlgo.Robots
                 return;
             }
 
-            // 2. Clôture automatique de fin de journée FTMO (à 21h45 Paris / 15h45 EST) pour éviter tout risque Overnight
+            // 2. Clôture automatique hors-session (strictement réservé à la Session US Regular 15h45 - 21h45 Paris)
             TimeSpan timeOfDay = Server.Time.TimeOfDay;
-            if (timeOfDay >= new TimeSpan(21, 45, 0) || timeOfDay < new TimeSpan(15, 30, 0))
+            if (timeOfDay >= new TimeSpan(21, 45, 0) || timeOfDay < new TimeSpan(15, 45, 0))
             {
                 var activePositions = Positions.FindAll("MlofiFtmo");
                 foreach (var pos in activePositions)
                 {
                     ClosePosition(pos);
-                    Print($"🌙 CLÔTURE DE FIN DE JOURNÉE FTMO : Position #{pos.Id} fermée à {timeOfDay:hh\\:mm} pour éviter le risque Overnight.");
+                    Print($"🌙 CLÔTURE HORS-SESSION US : Position #{pos.Id} fermée à {timeOfDay:hh\\:mm} pour éviter les spreads larges.");
                 }
-                if (timeOfDay >= new TimeSpan(21, 45, 0) || timeOfDay < new TimeSpan(15, 30, 0)) return;
+
+                var pendingOrders = PendingOrders.Where(o => o.Label == "MlofiFtmo").ToArray();
+                foreach (var order in pendingOrders)
+                {
+                    CancelPendingOrder(order);
+                }
+
+                if (timeOfDay >= new TimeSpan(21, 45, 0) || timeOfDay < new TimeSpan(15, 45, 0)) return;
             }
 
             // Gestion Break-Even sur les positions ouvertes
