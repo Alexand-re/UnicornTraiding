@@ -274,10 +274,13 @@ namespace cAlgo.Robots
                 RunTrainingPhase();
             }
 
-            // Exécution systématique du Replay Backtest du jour lors du lancement du bot
+            // Exécution systématique du Replay Backtest du jour + Backtest 1 An lors du lancement du bot
             _lastReplayDate = Server.Time.Date;
             Print("📊 [DEMARRAGE BOT] Exécution du Replay Backtest de la journée avec le modèle IA ré-entraîné...");
             RunEndOfDayReplayBacktest();
+
+            Print("📊 [DEMARRAGE BOT] Exécution du Backtest 1 An Historique (60 000 barres M1)...");
+            RunOneYearWalkForwardBacktest();
         }
 
         private List<SimpleBar> FetchBarsForTraining()
@@ -893,6 +896,13 @@ namespace cAlgo.Robots
                         double dd = (simPeakCapital - simCapital) / simPeakCapital * 100.0;
                         if (dd > maxDrawdownPct) maxDrawdownPct = dd;
 
+                        double currentDailyLossPct = (InitialCapital - simCapital) / InitialCapital * 100.0;
+                        if (currentDailyLossPct >= MaxDailyLossPct)
+                        {
+                            Print($"⛔ [DISJONCTEUR SIMULATION REPLAY] Perte Max du Jour atteinte (-{currentDailyLossPct:F2}% >= {MaxDailyLossPct}%). Arrêt des trades simulés pour le reste de la journée.");
+                            break;
+                        }
+
                         inPos = false;
                     }
                 }
@@ -980,6 +990,179 @@ namespace cAlgo.Robots
             Print($"PnL Réalisé (Simulation) : ${netPnL:+$#,##0.00;-$#,##0.00} ({(netPnL / InitialCapital * 100.0):F2} %)");
             Print($"Max Daily Drawdown       : -{maxDrawdownPct:F2} %");
             Print($"Conformité FTMO          : {(maxDrawdownPct < MaxDailyLossPct ? "VALIDÉ ✅ (Respect des limites)" : "ATTENTION 🚨 (Seuil dépassé)")}");
+            Print($"==========================================================================");
+        }
+
+        private void RunOneYearWalkForwardBacktest()
+        {
+            var historicalBars = Bars.ToList();
+
+            Print($"==========================================================================");
+            Print($"📊 [BACKTEST 1 AN HISTORIQUE - {historicalBars.Count} BARRES M1 ({Symbol.Name})]");
+            Print($"==========================================================================");
+
+            if (historicalBars.Count < 500)
+            {
+                Print("⚠️ Historique insuffisant pour le backtest 1 An.");
+                Print($"==========================================================================");
+                return;
+            }
+
+            double simCapital = InitialCapital;
+            int totalTrades = 0;
+            int winTrades = 0;
+            int lossTrades = 0;
+            double simPeakCapital = simCapital;
+            double maxDrawdownPct = 0;
+
+            bool inPos = false;
+            string posSide = "";
+            double entryPrice = 0;
+            double slPrice = 0;
+            double tpPrice = 0;
+            bool isBreakEven = false;
+            double posQty = 0;
+            double pipValue = Symbol.PipValue > 0 ? Symbol.PipValue : 1.0;
+
+            DateTime currentDay = DateTime.MinValue;
+            double dayStartCapital = simCapital;
+            bool dayHalted = false;
+
+            for (int i = 50; i < historicalBars.Count; i++)
+            {
+                var bar = historicalBars[i];
+                double closePrice = bar.Close;
+
+                if (bar.OpenTime.Date != currentDay)
+                {
+                    currentDay = bar.OpenTime.Date;
+                    dayStartCapital = simCapital;
+                    dayHalted = false;
+                }
+
+                if (dayHalted) continue;
+
+                if (inPos)
+                {
+                    double tpDist = Math.Abs(tpPrice - entryPrice);
+                    double currentProfit = posSide == "buy" ? (closePrice - entryPrice) : (entryPrice - closePrice);
+
+                    if (!isBreakEven && currentProfit >= tpDist * 0.50)
+                    {
+                        isBreakEven = true;
+                        slPrice = entryPrice;
+                    }
+
+                    bool hitTP = posSide == "buy" ? (bar.High >= tpPrice) : (bar.Low <= tpPrice);
+                    bool hitSL = posSide == "buy" ? (bar.Low <= slPrice) : (bar.High >= slPrice);
+
+                    if (hitTP || hitSL)
+                    {
+                        double pnlPoints = posSide == "buy" ? (tpPrice - entryPrice) : (entryPrice - slPrice);
+                        if (hitSL) pnlPoints = isBreakEven ? 0 : (posSide == "buy" ? (slPrice - entryPrice) : (entryPrice - slPrice));
+
+                        double pnl = pnlPoints * posQty * pipValue;
+
+                        simCapital += pnl;
+                        totalTrades++;
+                        if (pnl > 0) winTrades++; else if (pnl < 0) lossTrades++;
+
+                        if (simCapital > simPeakCapital) simPeakCapital = simCapital;
+                        double dd = (simPeakCapital - simCapital) / simPeakCapital * 100.0;
+                        if (dd > maxDrawdownPct) maxDrawdownPct = dd;
+
+                        double dayLossPct = (dayStartCapital - simCapital) / dayStartCapital * 100.0;
+                        if (dayLossPct >= MaxDailyLossPct)
+                        {
+                            dayHalted = true; // Disjoncteur quotidien en simulation !
+                        }
+
+                        inPos = false;
+                    }
+                }
+
+                if (!inPos && !dayHalted)
+                {
+                    double range = Math.Max(bar.High - bar.Low, 0.01);
+                    double closePos = (closePrice - bar.Low) / range;
+                    double buyVol = bar.TickVolume * closePos;
+                    double sellVol = bar.TickVolume * (1.0 - closePos);
+                    double mlofiScore = (buyVol + sellVol > 0) ? (buyVol - sellVol) / (buyVol + sellVol) : 0.0;
+
+                    double sum20 = 0, sum50 = 0, sumVol = 0;
+                    for (int k = 0; k < 50; k++)
+                    {
+                        double c = historicalBars[i - k].Close;
+                        double v = historicalBars[i - k].TickVolume;
+                        if (k < 20) { sum20 += c; sumVol += v; }
+                        sum50 += c;
+                    }
+                    double ema20 = sum20 / 20.0;
+                    double ema50 = sum50 / 50.0;
+                    double avgVolume = sumVol / 20.0;
+
+                    double gains = 0, losses = 0;
+                    for (int k = 0; k < 14; k++)
+                    {
+                        double diff = historicalBars[i - k].Close - historicalBars[i - k - 1].Close;
+                        if (diff > 0) gains += diff; else losses -= diff;
+                    }
+                    double rs = losses > 0 ? gains / losses : 1.0;
+                    double rsi14 = 100.0 - (100.0 / (1.0 + rs));
+
+                    double trSum = 0;
+                    for (int k = 0; k < 14; k++)
+                    {
+                        double tr1 = historicalBars[i - k].High - historicalBars[i - k].Low;
+                        double tr2 = Math.Abs(historicalBars[i - k].High - historicalBars[i - k - 1].Close);
+                        double tr3 = Math.Abs(historicalBars[i - k].Low - historicalBars[i - k - 1].Close);
+                        trSum += Math.Max(tr1, Math.Max(tr2, tr3));
+                    }
+                    double atr1m = trSum / 14.0;
+
+                    bool isVolumeSpike = bar.TickVolume >= avgVolume * 1.1;
+                    bool isBuySetup = closePrice > ema20 && mlofiScore >= MlofiThreshold && isVolumeSpike;
+                    bool isSellSetup = closePrice < ema20 && mlofiScore <= -MlofiThreshold && isVolumeSpike;
+
+                    if (isBuySetup || isSellSetup)
+                    {
+                        if (_mlPredictor != null && _mlPredictor.IsTrained)
+                        {
+                            var featureSample = MlofiMlFeatureExtractor.ExtractFeatures(
+                                mlofiScore, closePrice, ema20, 0, ema20, ema50, atr1m, 0, avgVolume, rsi14, label: false);
+
+                            var prediction = _mlPredictor.Predict(featureSample);
+                            if (prediction.Probability < 0.20f)
+                            {
+                                continue;
+                            }
+                        }
+
+                        double slDist = Math.Max(atr1m * SlAtrMultiplier, 0.50);
+                        double tpDist = Math.Max(atr1m * TpAtrMultiplier, 1.00);
+
+                        double riskDollars = simCapital * (RiskPerTradePct / 100.0);
+                        posQty = Math.Max(0.01, Math.Floor(riskDollars / (slDist * pipValue) * 100.0) / 100.0);
+
+                        inPos = true;
+                        posSide = isBuySetup ? "buy" : "sell";
+                        entryPrice = closePrice;
+                        slPrice = isBuySetup ? closePrice - slDist : closePrice + slDist;
+                        tpPrice = isBuySetup ? closePrice + tpDist : closePrice - tpDist;
+                        isBreakEven = false;
+                    }
+                }
+            }
+
+            double winRate = totalTrades > 0 ? ((double)winTrades / totalTrades * 100.0) : 0.0;
+            double netPnL = simCapital - InitialCapital;
+
+            Print($"Période Analysée          : ~1 An ({historicalBars.Count} Barres M1)");
+            Print($"Total Trades Exécutés     : {totalTrades} (Gagnants: {winTrades}, Perdants: {lossTrades})");
+            Print($"Win Rate Global 1 An      : {winRate:F1} %");
+            Print($"Gain Net Total 1 An       : ${netPnL:+$#,##0.00;-$#,##0.00} ({(netPnL / InitialCapital * 100.0):F2} %)");
+            Print($"Max Drawdown Global 1 An  : -{maxDrawdownPct:F2} %");
+            Print($"Capital Final 1 An        : ${simCapital:N2}");
             Print($"==========================================================================");
         }
     }
