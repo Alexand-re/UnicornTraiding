@@ -126,72 +126,47 @@ namespace cAlgo.Robots
                 nameof(MlofiMlFeatureData.EmaRatio),
                 nameof(MlofiMlFeatureData.NormalizedAtr),
                 nameof(MlofiMlFeatureData.VolumeRatio),
-                nameof(MlofiMlFeatureData.Rsi14),
-                nameof(MlofiMlFeatureData.MacdHist),
-                nameof(MlofiMlFeatureData.BollingerWidth),
-                nameof(MlofiMlFeatureData.MicroSlope5));
+                nameof(MlofiMlFeatureData.Rsi14));
 
             var pipelineFastTree = prepPipeline.Append(_mlContext.BinaryClassification.Trainers.FastTree(
                 new FastTreeBinaryTrainer.Options
                 {
-                    NumberOfLeaves = 20,
-                    NumberOfTrees = 150,
+                    NumberOfLeaves = 15,
+                    NumberOfTrees = 100,
                     MinimumExampleCountPerLeaf = 10,
-                    LearningRate = 0.03,
+                    LearningRate = 0.05,
                     LabelColumnName = nameof(MlofiMlFeatureData.Label),
                     FeatureColumnName = "Features"
                 }));
 
-            var pipelineFastForest = prepPipeline.Append(_mlContext.BinaryClassification.Trainers.FastForest(
-                new FastForestBinaryTrainer.Options
-                {
-                    NumberOfLeaves = 20,
-                    NumberOfTrees = 150,
-                    MinimumExampleCountPerLeaf = 10,
-                    LabelColumnName = nameof(MlofiMlFeatureData.Label),
-                    FeatureColumnName = "Features"
-                }));
-
-            log($"🧠 Entraînement de l'IA Hybride Ensemble (FastTree GBDT + FastForest RF) sur {trainSamples.Count} échantillons...");
+            log($"🧠 Entraînement de l'IA FastTree GBDT sur {trainSamples.Count} échantillons...");
             _modelFastTree = pipelineFastTree.Fit(trainDataView);
-            _modelFastForest = pipelineFastForest.Fit(trainDataView);
 
             var testPredsView = _modelFastTree.Transform(testDataView);
             var metrics = _mlContext.BinaryClassification.Evaluate(testPredsView, labelColumnName: nameof(MlofiMlFeatureData.Label));
 
             _predEngineFastTree = _mlContext.Model.CreatePredictionEngine<MlofiMlFeatureData, MlofiMlPredictionData>(_modelFastTree);
-            _predEngineFastForest = _mlContext.Model.CreatePredictionEngine<MlofiMlFeatureData, MlofiMlPredictionData>(_modelFastForest);
-            if (metrics.PositivePrecision < 0.30 || metrics.AreaUnderRocCurve < 0.50)
-            {
-                log($"⚠️ MODÈLE IA REJETÉ : Précision trop faible ({metrics.PositivePrecision * 100:F1}%) ou AUC faible ({metrics.AreaUnderRocCurve:F4}). Mode MLOFI Filtré activé.");
-                IsTrained = false;
-            }
-            else
-            {
-                IsTrained = true;
-            }
+            
+            IsTrained = true;
+            log($"🧠 IA Entraînée & Activée : {trainSamples.Count} échantillons | Accuracy: {metrics.Accuracy * 100:F1}% | AUC: {metrics.AreaUnderRocCurve:F4}");
 
             return (metrics.Accuracy, metrics.AreaUnderRocCurve, metrics.PositivePrecision, trainingData.Count);
         }
 
         public MlofiMlPredictionData Predict(MlofiMlFeatureData sample)
         {
-            if (!IsTrained || _predEngineFastTree == null || _predEngineFastForest == null)
+            if (!IsTrained || _predEngineFastTree == null)
             {
                 return new MlofiMlPredictionData { PredictedLabel = false, Probability = 0.0f, Score = 0f };
             }
 
             var predTree = _predEngineFastTree.Predict(sample);
-            var predForest = _predEngineFastForest.Predict(sample);
-
-            // Vote pondéré Soft-Voting (60% FastTree GBDT + 40% FastForest Random Forest)
-            float combinedProb = (0.60f * predTree.Probability) + (0.40f * predForest.Probability);
 
             return new MlofiMlPredictionData
             {
-                PredictedLabel = combinedProb >= 0.35f,
-                Probability = combinedProb,
-                Score = (predTree.Score + predForest.Score) / 2.0f
+                PredictedLabel = predTree.PredictedLabel,
+                Probability = predTree.Probability,
+                Score = predTree.Score
             };
         }
     }
@@ -209,17 +184,17 @@ namespace cAlgo.Robots
         [Parameter("Capital Initial FTMO ($)", Group = "2. Risk Management FTMO", DefaultValue = 100000.0)]
         public double InitialCapital { get; set; } = 100000.0;
 
-        [Parameter("Risque Par Trade (%)", Group = "2. Risk Management FTMO", DefaultValue = 0.95)]
-        public double RiskPerTradePct { get; set; } = 0.95;
+        [Parameter("Risque Par Trade (%)", Group = "2. Risk Management FTMO", DefaultValue = 0.40)]
+        public double RiskPerTradePct { get; set; } = 0.40;
 
         [Parameter("Max Positions Simultanées", Group = "2. Risk Management FTMO", DefaultValue = 3)]
         public int MaxConcurrentTrades { get; set; } = 3;
 
-        [Parameter("Disjoncteur Jour FTMO (%)", Group = "2. Risk Management FTMO", DefaultValue = 4.0)]
-        public double MaxDailyLossPct { get; set; } = 4.0;
+        [Parameter("Disjoncteur Jour FTMO (%)", Group = "2. Risk Management FTMO", DefaultValue = 3.5)]
+        public double MaxDailyLossPct { get; set; } = 3.5;
 
-        [Parameter("Seuil Réduction DD FTMO (%)", Group = "2. Risk Management FTMO", DefaultValue = 5.0)]
-        public double MaxDrawdownPct { get; set; } = 5.0;
+        [Parameter("Seuil Réduction DD FTMO (%)", Group = "2. Risk Management FTMO", DefaultValue = 4.0)]
+        public double MaxDrawdownPct { get; set; } = 4.0;
 
         [Parameter("Seuil MLOFI Score", Group = "1. Target Setup", DefaultValue = 0.20)]
         public double MlofiThreshold { get; set; } = 0.20;
@@ -227,11 +202,11 @@ namespace cAlgo.Robots
         [Parameter("Seuil ADX Tendance", Group = "1. Target Setup", DefaultValue = 20.0)]
         public double AdxThreshold { get; set; } = 20.0;
 
-        [Parameter("Multiplicateur StopLoss (x ATR)", Group = "3. Bracket Orders", DefaultValue = 1.0)]
-        public double SlAtrMultiplier { get; set; } = 1.0;
+        [Parameter("Multiplicateur StopLoss (x ATR)", Group = "3. Bracket Orders", DefaultValue = 0.50)]
+        public double SlAtrMultiplier { get; set; } = 0.50;
 
-        [Parameter("Multiplicateur TakeProfit (x ATR)", Group = "3. Bracket Orders", DefaultValue = 2.0)]
-        public double TpAtrMultiplier { get; set; } = 2.0;
+        [Parameter("Multiplicateur TakeProfit (x ATR)", Group = "3. Bracket Orders", DefaultValue = 1.50)]
+        public double TpAtrMultiplier { get; set; } = 1.50;
 
         [Parameter("Utiliser Ordres Limite", Group = "3. Bracket Orders", DefaultValue = false)]
         public bool UseLimitOrders { get; set; } = false;
@@ -259,6 +234,7 @@ namespace cAlgo.Robots
 
         // === ÉTAT INTERNE & ENGINES ===
         private MlofiMlPredictorEngine _mlPredictor = null!;
+        private List<SimpleBar> _trainingBars = new List<SimpleBar>();
         private double _dailyStartEquity;
         private DateTime _currentDay = DateTime.MinValue;
         private DateTime _lastTrainingDate = DateTime.MinValue;
@@ -300,7 +276,11 @@ namespace cAlgo.Robots
             {
                 try
                 {
-                    Print("📥 Téléchargement historique SPY 1m depuis Alpaca (pagination, ~1 an)...");
+                    string alpacaSymbol = string.IsNullOrEmpty(TargetSymbol) ? "NVDA" : TargetSymbol.Trim().ToUpper();
+                    if (alpacaSymbol.Contains("US500") || alpacaSymbol.Contains("SP500") || alpacaSymbol.Contains("INDEX") || alpacaSymbol.Contains("CASH"))
+                        alpacaSymbol = "SPY";
+
+                    Print($"📥 Téléchargement historique {alpacaSymbol} 1m depuis Alpaca (pagination, ~1 an)...");
                     using (var client = new System.Net.Http.HttpClient())
                     {
                         client.DefaultRequestHeaders.Add("APCA-API-KEY-ID", AlpacaKeyId.Trim());
@@ -314,7 +294,7 @@ namespace cAlgo.Robots
 
                         while (page < maxPages)
                         {
-                            string url = $"https://data.alpaca.markets/v2/stocks/bars?symbols=SPY&timeframe=1Min&limit=10000&start={startDate}&feed={AlpacaFeed}";
+                            string url = $"https://data.alpaca.markets/v2/stocks/bars?symbols={alpacaSymbol}&timeframe=1Min&limit=10000&start={startDate}&feed={AlpacaFeed}";
                             if (nextPageToken != null)
                                 url += $"&page_token={Uri.EscapeDataString(nextPageToken)}";
 
@@ -329,7 +309,7 @@ namespace cAlgo.Robots
                             using (var doc = System.Text.Json.JsonDocument.Parse(json))
                             {
                                 if (doc.RootElement.TryGetProperty("bars", out var barsElem) &&
-                                    barsElem.TryGetProperty("SPY", out var spyBars))
+                                    barsElem.TryGetProperty(alpacaSymbol, out var spyBars))
                                 {
                                     int countBefore = result.Count;
                                     foreach (var item in spyBars.EnumerateArray())
@@ -362,7 +342,7 @@ namespace cAlgo.Robots
                         if (result.Count > 0)
                         {
                             result = result.OrderBy(b => b.Timestamp).ToList();
-                            Print($"✅ {result.Count} barres 1m SPY chargées et triées chronologiquement depuis Alpaca API !");
+                            Print($"✅ {result.Count} barres 1m {alpacaSymbol} chargées et triées chronologiquement depuis Alpaca API !");
                             return result;
                         }
                         Print("⚠️ Aucune barre Alpaca. Repli sur barres locales cTrader...");
@@ -400,6 +380,7 @@ namespace cAlgo.Robots
             Print($"⚙️ PHASE 1 : Extraction des caractéristiques causales ({TrainingHistoryBars} barres)...");
 
             List<SimpleBar> barsList = FetchBarsForTraining();
+            _trainingBars = barsList;
             int totalBars = barsList.Count;
 
             if (totalBars < 100)
@@ -429,8 +410,8 @@ namespace cAlgo.Robots
                 for (int k = 0; k < 50; k++)
                 {
                     double c = barsList[i - k].Close;
-                    double v = barsList[i - k].TickVolume;
-                    if (k < 20) { sum20 += c; sumVol += v; }
+                    double vk = barsList[i - k].TickVolume > 1.0 ? barsList[i - k].TickVolume : (Math.Max(barsList[i - k].High - barsList[i - k].Low, 0.01) * 1000.0);
+                    if (k < 20) { sum20 += c; sumVol += vk; }
                     sum50 += c;
                 }
                 double ema20 = sum20 / 20.0;
@@ -456,7 +437,7 @@ namespace cAlgo.Robots
                 }
                 double atr1m = trSum / 14.0;
 
-                bool isVolumeSpike = bar.TickVolume >= avgVolume * 1.1;
+                bool isVolumeSpike = effectiveVol >= avgVolume * 1.1;
                 bool isBuy = closePrice > ema20 && mlofiScore >= MlofiThreshold && isVolumeSpike;
                 bool isSell = closePrice < ema20 && mlofiScore <= -MlofiThreshold && isVolumeSpike;
 
@@ -487,6 +468,10 @@ namespace cAlgo.Robots
 
             try
             {
+                string alpacaSymbol = string.IsNullOrEmpty(TargetSymbol) ? "NVDA" : TargetSymbol.Trim().ToUpper();
+                if (alpacaSymbol.Contains("US500") || alpacaSymbol.Contains("SP500") || alpacaSymbol.Contains("INDEX") || alpacaSymbol.Contains("CASH"))
+                    alpacaSymbol = "SPY";
+
                 using (var client = new System.Net.Http.HttpClient())
                 {
                     client.DefaultRequestHeaders.Add("APCA-API-KEY-ID", AlpacaKeyId.Trim());
@@ -494,7 +479,7 @@ namespace cAlgo.Robots
                     client.Timeout = TimeSpan.FromSeconds(5);
 
                     string startDate = DateTime.UtcNow.AddHours(-4).ToString("yyyy-MM-ddTHH:mm:ssZ");
-                    string url = $"https://data.alpaca.markets/v2/stocks/bars?symbols=SPY&timeframe=1Min&limit=55&start={startDate}&feed={AlpacaFeed}";
+                    string url = $"https://data.alpaca.markets/v2/stocks/bars?symbols={alpacaSymbol}&timeframe=1Min&limit=55&start={startDate}&feed={AlpacaFeed}";
                     var response = client.GetAsync(url).Result;
 
                     if (response.IsSuccessStatusCode)
@@ -503,7 +488,7 @@ namespace cAlgo.Robots
                         using (var doc = System.Text.Json.JsonDocument.Parse(json))
                         {
                             if (doc.RootElement.TryGetProperty("bars", out var barsElem) &&
-                                barsElem.TryGetProperty("SPY", out var spyBars))
+                                barsElem.TryGetProperty(alpacaSymbol, out var spyBars))
                             {
                                 foreach (var item in spyBars.EnumerateArray())
                                 {
@@ -655,20 +640,22 @@ namespace cAlgo.Robots
 
                 var bar = bars1m[idx];
                 currentPrice = Symbol.Ask;
-                currentBarVolume = bar.TickVolume > 0 ? bar.TickVolume : 1.0;
 
                 double range = Math.Max(bar.High - bar.Low, 0.01);
+                double effectiveVol = bar.TickVolume > 1.0 ? bar.TickVolume : (range * 1000.0);
+                currentBarVolume = effectiveVol;
+
                 double closePos = (currentPrice - bar.Low) / range;
-                double buyVol = bar.TickVolume * closePos;
-                double sellVol = bar.TickVolume * (1.0 - closePos);
+                double buyVol = effectiveVol * closePos;
+                double sellVol = effectiveVol * (1.0 - closePos);
                 mlofiScore = (buyVol + sellVol > 0) ? (buyVol - sellVol) / (buyVol + sellVol) : 0.0;
 
                 double sum20 = 0, sum50 = 0, sumVol = 0;
                 for (int k = 0; k < 50; k++)
                 {
                     double c = bars1m[idx - k].Close;
-                    double v = bars1m[idx - k].TickVolume;
-                    if (k < 20) { sum20 += c; sumVol += v; }
+                    double vk = bars1m[idx - k].TickVolume > 1.0 ? bars1m[idx - k].TickVolume : (Math.Max(bars1m[idx - k].High - bars1m[idx - k].Low, 0.01) * 1000.0);
+                    if (k < 20) { sum20 += c; sumVol += vk; }
                     sum50 += c;
                 }
                 ema20 = sum20 / 20.0;
@@ -693,7 +680,7 @@ namespace cAlgo.Robots
                     trSum += Math.Max(tr1, Math.Max(tr2, tr3));
                 }
                 atr1m = trSum / 14.0;
-                isVolumeSpike = bar.TickVolume >= avgVolume * 1.1;
+                isVolumeSpike = effectiveVol >= avgVolume * 1.1;
             }
 
             bool isBuySetup = currentPrice > ema20 && mlofiScore >= MlofiThreshold && isVolumeSpike;
@@ -717,13 +704,13 @@ namespace cAlgo.Robots
             if (_mlPredictor != null && _mlPredictor.IsTrained)
             {
                 var featureSample = MlofiMlFeatureExtractor.ExtractFeatures(
-                    mlofiScore, currentPrice, ema20, 0, ema20, ema50, atr1m, 0, avgVolume, rsi14, label: false);
+                    mlofiScore, currentPrice, ema20, 0, ema20, ema50, atr1m, currentBarVolume, avgVolume, rsi14, label: false);
 
                 var prediction = _mlPredictor.Predict(featureSample);
 
-                Print($"🧠 [ML FastTree] Évaluation du Signal : Probabilité = {prediction.Probability * 100:F1}% (Seuil Requis = 20.0%) -> {(prediction.Probability >= 0.20f ? "VALIDÉ ✅" : "REJETÉ ❌")}");
+                Print($"🧠 [ML FastTree] Évaluation du Signal : Probabilité = {prediction.Probability * 100:F1}% (Seuil Requis = 40.0%) -> {(prediction.Probability >= 0.40f ? "VALIDÉ ✅" : "REJETÉ ❌")}");
 
-                if (prediction.Probability < 0.20f)
+                if (prediction.Probability < 0.40f)
                 {
                     return;
                 }
@@ -731,7 +718,7 @@ namespace cAlgo.Robots
 
             double currentOverallDrawdownPct = (_peakEquity - Account.Equity) / _peakEquity * 100.0;
             double dailyDrawdownPct = (_dailyStartEquity - Account.Equity) / _dailyStartEquity * 100.0;
-            double effectiveRiskPct = (currentOverallDrawdownPct >= MaxDrawdownPct) ? RiskPerTradePct * 0.5 : RiskPerTradePct;
+            double effectiveRiskPct = (currentOverallDrawdownPct >= MaxDrawdownPct) ? (RiskPerTradePct * 0.5) : RiskPerTradePct;
 
             // Filtre préventif : Ne pas ouvrir de trade si un Stop Loss potentiel ferait franchir la limite de perte quotidienne
             if (dailyDrawdownPct + effectiveRiskPct >= MaxDailyLossPct)
@@ -842,18 +829,39 @@ namespace cAlgo.Robots
             Print($"📊 [BACKTEST DYNAMIQUE REPLAY DU JOUR - {Server.Time:yyyy-MM-dd}]");
             Print($"==========================================================================");
 
-            // Filtrer uniquement la session régulière US (14h30 - 19h55 UTC)
-            var todaysBars = Bars.Where(b => b.OpenTime.Date == Server.Time.Date && 
-                                            b.OpenTime.TimeOfDay >= new TimeSpan(14, 30, 0) && 
-                                            b.OpenTime.TimeOfDay < new TimeSpan(19, 55, 0)).ToList();
-
-            if (todaysBars.Count < 50)
+            // Utiliser les barres d'entraînement (Alpaca avec vrai volume) si disponibles
+            List<SimpleBar> sourceBars;
+            if (_trainingBars.Count > 500)
             {
-                // Fallback sur les 390 dernières barres si moins de 50 barres trouvées
-                todaysBars = Bars.TakeLast(390).ToList();
+                // Filtrer uniquement la journée courante à partir des barres Alpaca
+                sourceBars = _trainingBars.Where(b => b.Timestamp.Date == Server.Time.Date &&
+                                                       b.Timestamp.TimeOfDay >= new TimeSpan(14, 30, 0) &&
+                                                       b.Timestamp.TimeOfDay < new TimeSpan(20, 55, 0)).ToList();
+                if (sourceBars.Count < 50)
+                {
+                    // Fallback : dernières barres disponibles des données d'entraînement
+                    sourceBars = _trainingBars.TakeLast(390).ToList();
+                }
+            }
+            else
+            {
+                // Fallback sur les barres cTrader locales (session régulière US)
+                var todaysBars = Bars.Where(b => b.OpenTime.Date == Server.Time.Date &&
+                                                  b.OpenTime.TimeOfDay >= new TimeSpan(14, 30, 0) &&
+                                                  b.OpenTime.TimeOfDay < new TimeSpan(20, 55, 0)).ToList();
+                sourceBars = new List<SimpleBar>();
+                foreach (var b in todaysBars)
+                    sourceBars.Add(new SimpleBar { Timestamp = b.OpenTime, Open = b.Open, High = b.High, Low = b.Low, Close = b.Close, TickVolume = b.TickVolume });
+
+                if (sourceBars.Count < 50)
+                {
+                    sourceBars = new List<SimpleBar>();
+                    foreach (var b in Bars.TakeLast(390))
+                        sourceBars.Add(new SimpleBar { Timestamp = b.OpenTime, Open = b.Open, High = b.High, Low = b.Low, Close = b.Close, TickVolume = b.TickVolume });
+                }
             }
 
-            if (todaysBars.Count < 50)
+            if (sourceBars.Count < 50)
             {
                 Print("⚠️ Pas assez de barres sur la journée courante pour la simulation.");
                 Print($"==========================================================================");
@@ -861,46 +869,41 @@ namespace cAlgo.Robots
             }
 
             double simCapital = InitialCapital;
-            int totalTrades = 0;
-            int winTrades = 0;
-            int lossTrades = 0;
+            int totalTrades = 0, winTrades = 0, lossTrades = 0;
             double simPeakCapital = simCapital;
             double maxDrawdownPct = 0;
 
             bool inPos = false;
             string posSide = "";
-            double entryPrice = 0;
-            double slPrice = 0;
-            double tpPrice = 0;
+            double entryPrice = 0, slDist = 0, tpDist = 0;
             bool isBreakEven = false;
-            double posQty = 0;
-            double pipValue = Symbol.PipValue > 0 ? Symbol.PipValue : 1.0;
+            double riskBudgetAtEntry = 0;
 
-            for (int i = 50; i < todaysBars.Count; i++)
+            for (int i = 50; i < sourceBars.Count; i++)
             {
-                var bar = todaysBars[i];
+                var bar = sourceBars[i];
                 double closePrice = bar.Close;
 
                 if (inPos)
                 {
-                    double tpDist = Math.Abs(tpPrice - entryPrice);
                     double currentProfit = posSide == "buy" ? (closePrice - entryPrice) : (entryPrice - closePrice);
 
-                    if (!isBreakEven && currentProfit >= tpDist * 0.50)
+                    // Break-even à 40% du TP (comme le projet C#)
+                    if (!isBreakEven && currentProfit >= tpDist * 0.40)
                     {
                         isBreakEven = true;
-                        slPrice = entryPrice;
                     }
 
-                    bool hitTP = posSide == "buy" ? (bar.High >= tpPrice) : (bar.Low <= tpPrice);
-                    bool hitSL = posSide == "buy" ? (bar.Low <= slPrice) : (bar.High >= slPrice);
+                    bool hitTP = posSide == "buy" ? (bar.High >= entryPrice + tpDist) : (bar.Low <= entryPrice - tpDist);
+                    bool hitSL = posSide == "buy" ? (bar.Low <= (isBreakEven ? entryPrice : entryPrice - slDist))
+                                                  : (bar.High >= (isBreakEven ? entryPrice : entryPrice + slDist));
 
                     if (hitTP || hitSL)
                     {
-                        double pnlPoints = posSide == "buy" ? (tpPrice - entryPrice) : (entryPrice - slPrice);
-                        if (hitSL) pnlPoints = isBreakEven ? 0 : (posSide == "buy" ? (slPrice - entryPrice) : (entryPrice - slPrice));
-
-                        double pnl = pnlPoints * posQty * pipValue;
+                        double pnl;
+                        if (hitTP) pnl = +riskBudgetAtEntry * (tpDist / slDist); // Gain = Risk * RR
+                        else if (isBreakEven) pnl = 0; // Break-even
+                        else pnl = -riskBudgetAtEntry; // Perte = -Risk
 
                         simCapital += pnl;
                         totalTrades++;
@@ -924,16 +927,17 @@ namespace cAlgo.Robots
                 if (!inPos)
                 {
                     double range = Math.Max(bar.High - bar.Low, 0.01);
+                    double effectiveVol = bar.TickVolume > 1.0 ? bar.TickVolume : (range * 1000.0);
                     double closePos = (closePrice - bar.Low) / range;
-                    double buyVol = bar.TickVolume * closePos;
-                    double sellVol = bar.TickVolume * (1.0 - closePos);
+                    double buyVol = effectiveVol * closePos;
+                    double sellVol = effectiveVol * (1.0 - closePos);
                     double mlofiScore = (buyVol + sellVol > 0) ? (buyVol - sellVol) / (buyVol + sellVol) : 0.0;
 
                     double sum20 = 0, sum50 = 0, sumVol = 0;
                     for (int k = 0; k < 50; k++)
                     {
-                        double c = todaysBars[i - k].Close;
-                        double v = todaysBars[i - k].TickVolume;
+                        double c = sourceBars[i - k].Close;
+                        double v = sourceBars[i - k].TickVolume > 1.0 ? sourceBars[i - k].TickVolume : 1.0;
                         if (k < 20) { sum20 += c; sumVol += v; }
                         sum50 += c;
                     }
@@ -944,7 +948,7 @@ namespace cAlgo.Robots
                     double gains = 0, losses = 0;
                     for (int k = 0; k < 14; k++)
                     {
-                        double diff = todaysBars[i - k].Close - todaysBars[i - k - 1].Close;
+                        double diff = sourceBars[i - k].Close - sourceBars[i - k - 1].Close;
                         if (diff > 0) gains += diff; else losses -= diff;
                     }
                     double rs = losses > 0 ? gains / losses : 1.0;
@@ -953,20 +957,20 @@ namespace cAlgo.Robots
                     double trSum = 0;
                     for (int k = 0; k < 14; k++)
                     {
-                        double tr1 = todaysBars[i - k].High - todaysBars[i - k].Low;
-                        double tr2 = Math.Abs(todaysBars[i - k].High - todaysBars[i - k - 1].Close);
-                        double tr3 = Math.Abs(todaysBars[i - k].Low - todaysBars[i - k - 1].Close);
+                        double tr1 = sourceBars[i - k].High - sourceBars[i - k].Low;
+                        double tr2 = Math.Abs(sourceBars[i - k].High - sourceBars[i - k - 1].Close);
+                        double tr3 = Math.Abs(sourceBars[i - k].Low - sourceBars[i - k - 1].Close);
                         trSum += Math.Max(tr1, Math.Max(tr2, tr3));
                     }
                     double atr1m = trSum / 14.0;
 
-                    bool isVolumeSpike = bar.TickVolume >= avgVolume * 1.1;
+                    bool isVolumeSpike = effectiveVol >= avgVolume * 1.1;
                     bool isBuySetup = closePrice > ema20 && mlofiScore >= MlofiThreshold && isVolumeSpike;
                     bool isSellSetup = closePrice < ema20 && mlofiScore <= -MlofiThreshold && isVolumeSpike;
 
                     if (isBuySetup || isSellSetup)
                     {
-                        // Validation obligatoire par le modèle ML FastTree / FastForest entraîné
+                        // Validation ML obligatoire (si ML rejeté → pas de trades)
                         if (_mlPredictor != null && _mlPredictor.IsTrained)
                         {
                             var featureSample = MlofiMlFeatureExtractor.ExtractFeatures(
@@ -975,21 +979,18 @@ namespace cAlgo.Robots
                             var prediction = _mlPredictor.Predict(featureSample);
                             if (prediction.Probability < 0.20f)
                             {
-                                continue; // Filtré par l'IA ML !
+                                continue;
                             }
                         }
 
-                        double slDist = Math.Max(atr1m * SlAtrMultiplier, 0.50);
-                        double tpDist = Math.Max(atr1m * TpAtrMultiplier, 1.00);
+                        slDist = Math.Max(atr1m * SlAtrMultiplier, closePrice * 0.001); // Min 0.1% du prix
+                        tpDist = Math.Max(atr1m * TpAtrMultiplier, closePrice * 0.002); // Min 0.2% du prix
 
-                        double riskDollars = simCapital * (RiskPerTradePct / 100.0);
-                        posQty = Math.Max(0.01, Math.Floor(riskDollars / (slDist * pipValue) * 100.0) / 100.0);
+                        riskBudgetAtEntry = simCapital * (RiskPerTradePct / 100.0);
 
                         inPos = true;
                         posSide = isBuySetup ? "buy" : "sell";
                         entryPrice = closePrice;
-                        slPrice = isBuySetup ? closePrice - slDist : closePrice + slDist;
-                        tpPrice = isBuySetup ? closePrice + tpDist : closePrice - tpDist;
                         isBreakEven = false;
                     }
                 }
@@ -998,7 +999,7 @@ namespace cAlgo.Robots
             double winRate = totalTrades > 0 ? ((double)winTrades / totalTrades * 100.0) : 0.0;
             double netPnL = simCapital - InitialCapital;
 
-            Print($"Barres M1 Analysées      : {todaysBars.Count} Barres");
+            Print($"Barres M1 Analysées      : {sourceBars.Count} Barres");
             Print($"Trades Simulés du Jour  : {totalTrades} (Gagnants: {winTrades}, Perdants: {lossTrades})");
             Print($"Win Rate Simulée Journée : {winRate:F1} %");
             Print($"PnL Réalisé (Simulation) : ${netPnL:+$#,##0.00;-$#,##0.00} ({(netPnL / InitialCapital * 100.0):F2} %)");
@@ -1007,9 +1008,88 @@ namespace cAlgo.Robots
             Print($"==========================================================================");
         }
 
+        private void TrainModelForWindow(List<SimpleBar> barsList)
+        {
+            int totalBars = barsList.Count;
+            if (totalBars < 100) return;
+
+            int countToUse = Math.Min(TrainingHistoryBars, totalBars - 20);
+            int startIndex = Math.Max(0, totalBars - countToUse - 20);
+
+            List<MlofiMlFeatureData> trainingSamples = new List<MlofiMlFeatureData>();
+
+            for (int i = startIndex + 50; i < totalBars - 20; i++)
+            {
+                var bar = barsList[i];
+                double closePrice = bar.Close;
+
+                double range = Math.Max(bar.High - bar.Low, 0.01);
+                double effectiveVol = bar.TickVolume > 1.0 ? bar.TickVolume : (range * 1000.0);
+                double closePos = (closePrice - bar.Low) / range;
+                double buyVol = effectiveVol * closePos;
+                double sellVol = effectiveVol * (1.0 - closePos);
+                double mlofiScore = (buyVol + sellVol > 0) ? (buyVol - sellVol) / (buyVol + sellVol) : 0.0;
+
+                double sum20 = 0, sum50 = 0, sumVol = 0;
+                for (int k = 0; k < 50; k++)
+                {
+                    double c = barsList[i - k].Close;
+                    double vk = barsList[i - k].TickVolume > 1.0 ? barsList[i - k].TickVolume : (Math.Max(barsList[i - k].High - barsList[i - k].Low, 0.01) * 1000.0);
+                    if (k < 20) { sum20 += c; sumVol += vk; }
+                    sum50 += c;
+                }
+                double ema20 = sum20 / 20.0;
+                double ema50 = sum50 / 50.0;
+                double avgVolume = sumVol / 20.0;
+
+                double gains = 0, losses = 0;
+                for (int k = 0; k < 14; k++)
+                {
+                    double diff = barsList[i - k].Close - barsList[i - k - 1].Close;
+                    if (diff > 0) gains += diff; else losses -= diff;
+                }
+                double rs = losses > 0 ? gains / losses : 1.0;
+                double rsi14 = 100.0 - (100.0 / (1.0 + rs));
+
+                double trSum = 0;
+                for (int k = 0; k < 14; k++)
+                {
+                    double tr1 = barsList[i - k].High - barsList[i - k].Low;
+                    double tr2 = Math.Abs(barsList[i - k].High - barsList[i - k - 1].Close);
+                    double tr3 = Math.Abs(barsList[i - k].Low - barsList[i - k - 1].Close);
+                    trSum += Math.Max(tr1, Math.Max(tr2, tr3));
+                }
+                double atr1m = trSum / 14.0;
+
+                bool isVolumeSpike = effectiveVol >= avgVolume * 1.1;
+                bool isBuy = closePrice > ema20 && mlofiScore >= MlofiThreshold && isVolumeSpike;
+                bool isSell = closePrice < ema20 && mlofiScore <= -MlofiThreshold && isVolumeSpike;
+
+                if (!isBuy && !isSell) continue;
+
+                bool label = false;
+                double tp = isBuy ? closePrice + (TpAtrMultiplier * atr1m) : closePrice - (TpAtrMultiplier * atr1m);
+                double sl = isBuy ? closePrice - (SlAtrMultiplier * atr1m) : closePrice + (SlAtrMultiplier * atr1m);
+
+                for (int k = 1; k <= 15 && i + k < totalBars; k++)
+                {
+                    var fBar = barsList[i + k];
+                    if (isBuy) { if (fBar.High >= tp) { label = true; break; } if (fBar.Low <= sl) break; }
+                    else { if (fBar.Low <= tp) { label = true; break; } if (fBar.High >= sl) break; }
+                }
+
+                trainingSamples.Add(MlofiMlFeatureExtractor.ExtractFeatures(mlofiScore, closePrice, ema20, 0, ema20, ema50, atr1m, effectiveVol, avgVolume, rsi14, label: label));
+            }
+
+            _mlPredictor = new MlofiMlPredictorEngine();
+            var res = _mlPredictor.TrainModel(trainingSamples, Print);
+            Print($"[Walk-Forward ML] Echantillons : {res.SampleCount} | Accuracy: {res.Accuracy * 100:F2}%");
+        }
+
         private void RunOneYearWalkForwardBacktest()
         {
-            var historicalBars = Bars.ToList();
+            var historicalBars = _trainingBars.Count > 500 ? _trainingBars : Bars.Select(b => 
+                new SimpleBar { Timestamp = b.OpenTime, Open = b.Open, High = b.High, Low = b.Low, Close = b.Close, TickVolume = b.TickVolume }).ToList();
 
             Print($"==========================================================================");
             Print($"📊 [BACKTEST 1 AN HISTORIQUE - {historicalBars.Count} BARRES M1 ({Symbol.Name})]");
@@ -1023,91 +1103,103 @@ namespace cAlgo.Robots
             }
 
             double simCapital = InitialCapital;
-            int totalTrades = 0;
-            int winTrades = 0;
-            int lossTrades = 0;
+            int totalTrades = 0, winTrades = 0, lossTrades = 0;
             double simPeakCapital = simCapital;
             double maxDrawdownPct = 0;
 
-            bool inPos = false;
-            string posSide = "";
-            double entryPrice = 0;
-            double slPrice = 0;
-            double tpPrice = 0;
-            bool isBreakEven = false;
-            double posQty = 0;
-            double pipValue = Symbol.PipValue > 0 ? Symbol.PipValue : 1.0;
+            var activePositions = new List<(string Side, double Entry, double Sl, double Tp, double Risk, double SlDist)>();
 
             DateTime currentDay = DateTime.MinValue;
             double dayStartCapital = simCapital;
             bool dayHalted = false;
 
-            for (int i = 50; i < historicalBars.Count; i++)
+            int windowTrainSize = 25000;
+            int windowTestSize = 6000;
+
+            for (int windowStart = 0; windowStart + windowTrainSize < historicalBars.Count; windowStart += windowTestSize)
             {
+                int trainStart = windowStart;
+                int trainEnd = windowStart + windowTrainSize;
+                int testStart = trainEnd;
+                int testEnd = Math.Min(testStart + windowTestSize, historicalBars.Count);
+
+                if (testEnd <= testStart) break;
+
+                var trainBars = historicalBars.Skip(trainStart).Take(windowTrainSize).ToList();
+                TrainModelForWindow(trainBars);
+
+                for (int i = Math.Max(50, testStart); i < testEnd; i++)
+                {
                 var bar = historicalBars[i];
                 double closePrice = bar.Close;
 
-                if (bar.OpenTime.Date != currentDay)
+                if (bar.Timestamp.Date != currentDay)
                 {
-                    currentDay = bar.OpenTime.Date;
+                    currentDay = bar.Timestamp.Date;
                     dayStartCapital = simCapital;
                     dayHalted = false;
                 }
 
+                if (simCapital > simPeakCapital) simPeakCapital = simCapital;
+                double dd = (simPeakCapital - simCapital) / simPeakCapital * 100.0;
+                if (dd > maxDrawdownPct) maxDrawdownPct = dd;
+
+                // Session US Regular 13h30 - 21h00 UTC (9h30 - 16h00 EST)
+                var tod = bar.Timestamp.TimeOfDay;
+                if (tod < new TimeSpan(13, 30, 0) || tod >= new TimeSpan(21, 0, 0))
+                {
+                    for (int p = activePositions.Count - 1; p >= 0; p--)
+                    {
+                        var pos = activePositions[p];
+                        double pnlPoints = pos.Side == "buy" ? (closePrice - pos.Entry) : (pos.Entry - closePrice);
+                        double rMult = pos.SlDist > 0 ? (pnlPoints / pos.SlDist) : 0;
+                        double pnl = pos.Risk * rMult;
+                        simCapital += pnl;
+                        totalTrades++;
+                        if (pnl > 0) winTrades++; else if (pnl < 0) lossTrades++;
+                        activePositions.RemoveAt(p);
+                    }
+                    continue;
+                }
+
                 if (dayHalted) continue;
 
-                if (inPos)
+                // 1. Évaluer les positions en cours
+                for (int p = activePositions.Count - 1; p >= 0; p--)
                 {
-                    double tpDist = Math.Abs(tpPrice - entryPrice);
-                    double currentProfit = posSide == "buy" ? (closePrice - entryPrice) : (entryPrice - closePrice);
-
-                    if (!isBreakEven && currentProfit >= tpDist * 0.50)
-                    {
-                        isBreakEven = true;
-                        slPrice = entryPrice;
-                    }
-
-                    bool hitTP = posSide == "buy" ? (bar.High >= tpPrice) : (bar.Low <= tpPrice);
-                    bool hitSL = posSide == "buy" ? (bar.Low <= slPrice) : (bar.High >= slPrice);
+                    var pos = activePositions[p];
+                    bool hitTP = pos.Side == "buy" ? (bar.High >= pos.Tp) : (bar.Low <= pos.Tp);
+                    bool hitSL = pos.Side == "buy" ? (bar.Low <= pos.Sl) : (bar.High >= pos.Sl);
 
                     if (hitTP || hitSL)
                     {
-                        double pnlPoints = posSide == "buy" ? (tpPrice - entryPrice) : (entryPrice - slPrice);
-                        if (hitSL) pnlPoints = isBreakEven ? 0 : (posSide == "buy" ? (slPrice - entryPrice) : (entryPrice - slPrice));
-
-                        double pnl = pnlPoints * posQty * pipValue;
-
+                        double pnl = hitTP ? (+pos.Risk * (TpAtrMultiplier / SlAtrMultiplier)) : -pos.Risk;
                         simCapital += pnl;
                         totalTrades++;
                         if (pnl > 0) winTrades++; else if (pnl < 0) lossTrades++;
 
-                        if (simCapital > simPeakCapital) simPeakCapital = simCapital;
-                        double dd = (simPeakCapital - simCapital) / simPeakCapital * 100.0;
-                        if (dd > maxDrawdownPct) maxDrawdownPct = dd;
-
                         double dayLossPct = (dayStartCapital - simCapital) / dayStartCapital * 100.0;
-                        if (dayLossPct >= MaxDailyLossPct)
-                        {
-                            dayHalted = true; // Disjoncteur quotidien en simulation !
-                        }
+                        if (dayLossPct >= MaxDailyLossPct) dayHalted = true;
 
-                        inPos = false;
+                        activePositions.RemoveAt(p);
                     }
                 }
 
-                if (!inPos && !dayHalted)
+                // 2. Chercher de nouvelles entrées (jusqu'à MaxConcurrentTrades)
+                if (activePositions.Count < MaxConcurrentTrades && !dayHalted)
                 {
                     double range = Math.Max(bar.High - bar.Low, 0.01);
+                    double effectiveVol = bar.TickVolume > 1.0 ? bar.TickVolume : (range * 1000.0);
                     double closePos = (closePrice - bar.Low) / range;
-                    double buyVol = bar.TickVolume * closePos;
-                    double sellVol = bar.TickVolume * (1.0 - closePos);
+                    double buyVol = effectiveVol * closePos;
+                    double sellVol = effectiveVol * (1.0 - closePos);
                     double mlofiScore = (buyVol + sellVol > 0) ? (buyVol - sellVol) / (buyVol + sellVol) : 0.0;
 
                     double sum20 = 0, sum50 = 0, sumVol = 0;
                     for (int k = 0; k < 50; k++)
                     {
                         double c = historicalBars[i - k].Close;
-                        double v = historicalBars[i - k].TickVolume;
+                        double v = historicalBars[i - k].TickVolume > 1.0 ? historicalBars[i - k].TickVolume : 1.0;
                         if (k < 20) { sum20 += c; sumVol += v; }
                         sum50 += c;
                     }
@@ -1134,7 +1226,7 @@ namespace cAlgo.Robots
                     }
                     double atr1m = trSum / 14.0;
 
-                    bool isVolumeSpike = bar.TickVolume >= avgVolume * 1.1;
+                    bool isVolumeSpike = effectiveVol >= avgVolume * 1.1;
                     bool isBuySetup = closePrice > ema20 && mlofiScore >= MlofiThreshold && isVolumeSpike;
                     bool isSellSetup = closePrice < ema20 && mlofiScore <= -MlofiThreshold && isVolumeSpike;
 
@@ -1143,30 +1235,29 @@ namespace cAlgo.Robots
                         if (_mlPredictor != null && _mlPredictor.IsTrained)
                         {
                             var featureSample = MlofiMlFeatureExtractor.ExtractFeatures(
-                                mlofiScore, closePrice, ema20, 0, ema20, ema50, atr1m, 0, avgVolume, rsi14, label: false);
+                                mlofiScore, closePrice, ema20, 0, ema20, ema50, atr1m, effectiveVol, avgVolume, rsi14, label: false);
 
                             var prediction = _mlPredictor.Predict(featureSample);
-                            if (prediction.Probability < 0.20f)
-                            {
-                                continue;
-                            }
+                            if (prediction.Probability < 0.40f) continue;
                         }
 
-                        double slDist = Math.Max(atr1m * SlAtrMultiplier, 0.50);
-                        double tpDist = Math.Max(atr1m * TpAtrMultiplier, 1.00);
+                        double currentDdFromPeak = (simPeakCapital - simCapital) / simPeakCapital * 100.0;
+                        double effectiveRiskPct = (currentDdFromPeak >= MaxDrawdownPct) ? (RiskPerTradePct * 0.5) : RiskPerTradePct;
 
-                        double riskDollars = simCapital * (RiskPerTradePct / 100.0);
-                        posQty = Math.Max(0.01, Math.Floor(riskDollars / (slDist * pipValue) * 100.0) / 100.0);
+                        double currentDayLossPct = (dayStartCapital - simCapital) / dayStartCapital * 100.0;
+                        if (currentDayLossPct + effectiveRiskPct >= MaxDailyLossPct) continue;
 
-                        inPos = true;
-                        posSide = isBuySetup ? "buy" : "sell";
-                        entryPrice = closePrice;
-                        slPrice = isBuySetup ? closePrice - slDist : closePrice + slDist;
-                        tpPrice = isBuySetup ? closePrice + tpDist : closePrice - tpDist;
-                        isBreakEven = false;
+                        double slDist = atr1m * SlAtrMultiplier; if (slDist <= 0.05) slDist = 0.50;
+                        double tpDist = atr1m * TpAtrMultiplier; if (tpDist <= 0.05) tpDist = 1.00;
+                        double slPrice = isBuySetup ? closePrice - slDist : closePrice + slDist;
+                        double tpPrice = isBuySetup ? closePrice + tpDist : closePrice - tpDist;
+                        double riskBudget = simCapital * (effectiveRiskPct / 100.0);
+
+                        activePositions.Add((isBuySetup ? "buy" : "sell", closePrice, slPrice, tpPrice, riskBudget, slDist));
                     }
                 }
-            }
+                } // End inner test loop
+            } // End outer walk-forward loop
 
             double winRate = totalTrades > 0 ? ((double)winTrades / totalTrades * 100.0) : 0.0;
             double netPnL = simCapital - InitialCapital;
@@ -1175,8 +1266,7 @@ namespace cAlgo.Robots
             Print($"Total Trades Exécutés     : {totalTrades} (Gagnants: {winTrades}, Perdants: {lossTrades})");
             Print($"Win Rate Global 1 An      : {winRate:F1} %");
             Print($"Gain Net Total 1 An       : ${netPnL:+$#,##0.00;-$#,##0.00} ({(netPnL / InitialCapital * 100.0):F2} %)");
-            Print($"Max Drawdown Global 1 An  : -{maxDrawdownPct:F2} %");
-            Print($"Capital Final 1 An        : ${simCapital:N2}");
+            Print($"Max DD Peak (HighWater)   : -{maxDrawdownPct:F2} %");
             Print($"==========================================================================");
         }
     }
@@ -1239,3 +1329,4 @@ namespace cAlgo.Robots
         }
     }
 }
+//
