@@ -178,23 +178,35 @@ namespace cAlgo.Robots
     public class UnicornTraiding : Robot
     {
         // === PARAMÈTRES ENTRÉE ===
-        [Parameter("Symbol Target (ex: NVDA)", Group = "1. Target Setup", DefaultValue = "NVDA")]
-        public string TargetSymbol { get; set; } = "NVDA";
+        [Parameter("Symbol Target (ex: AMZN)", Group = "1. Target Setup", DefaultValue = "AMZN")]
+        public string TargetSymbol { get; set; } = "AMZN";
 
         [Parameter("Capital Initial FTMO ($)", Group = "2. Risk Management FTMO", DefaultValue = 100000.0)]
         public double InitialCapital { get; set; } = 100000.0;
 
-        [Parameter("Risque Par Trade (%)", Group = "2. Risk Management FTMO", DefaultValue = 0.40)]
-        public double RiskPerTradePct { get; set; } = 0.40;
+        [Parameter("Risque Par Trade (%)", Group = "2. Risk Management FTMO", DefaultValue = 0.10)]
+        public double RiskPerTradePct { get; set; } = 0.10;
 
-        [Parameter("Max Positions Simultanées", Group = "2. Risk Management FTMO", DefaultValue = 3)]
-        public int MaxConcurrentTrades { get; set; } = 3;
+        [Parameter("Max Positions Simultanées", Group = "2. Risk Management FTMO", DefaultValue = 10)]
+        public int MaxConcurrentTrades { get; set; } = 10;
 
-        [Parameter("Disjoncteur Jour FTMO (%)", Group = "2. Risk Management FTMO", DefaultValue = 3.5)]
-        public double MaxDailyLossPct { get; set; } = 3.5;
+        [Parameter("Levier Notionnel Max (x Equity)", Group = "2. Risk Management FTMO", DefaultValue = 1.0)]
+        public double MaxLeverage { get; set; } = 1.0;
 
-        [Parameter("Seuil Réduction DD FTMO (%)", Group = "2. Risk Management FTMO", DefaultValue = 4.0)]
-        public double MaxDrawdownPct { get; set; } = 4.0;
+        [Parameter("Cutoff Entrée UTC (heures)", Group = "2. Risk Management FTMO", DefaultValue = 18.5)]
+        public double EntryCutoffUtcHours { get; set; } = 18.5;
+
+        [Parameter("Clôture EOD UTC (heures)", Group = "2. Risk Management FTMO", DefaultValue = 21.0)]
+        public double EodCloseUtcHours { get; set; } = 21.0;
+
+        [Parameter("Seuil Break-Even (fraction du TP)", Group = "3. Bracket Orders", DefaultValue = 0.80)]
+        public double BreakEvenTriggerPct { get; set; } = 0.80;
+
+        [Parameter("Disjoncteur Jour FTMO (%)", Group = "2. Risk Management FTMO", DefaultValue = 5.0)]
+        public double MaxDailyLossPct { get; set; } = 5.0;
+
+        [Parameter("Seuil Réduction DD FTMO (%)", Group = "2. Risk Management FTMO", DefaultValue = 10.0)]
+        public double MaxDrawdownPct { get; set; } = 10.0;
 
         [Parameter("Seuil MLOFI Score", Group = "1. Target Setup", DefaultValue = 0.20)]
         public double MlofiThreshold { get; set; } = 0.20;
@@ -217,8 +229,8 @@ namespace cAlgo.Robots
         [Parameter("Expiration Ordre Limite (Minutes)", Group = "3. Bracket Orders", DefaultValue = 1.0)]
         public double LimitOrderTimeoutMinutes { get; set; } = 1.0;
 
-        [Parameter("Activer Apprentissage ML FastTree", Group = "4. Machine Learning", DefaultValue = true)]
-        public bool EnableMlTraining { get; set; } = true;
+        [Parameter("Activer Apprentissage ML FastTree", Group = "4. Machine Learning", DefaultValue = false)]
+        public bool EnableMlTraining { get; set; } = false;
 
         [Parameter("Nombre de Barres Entraînement", Group = "4. Machine Learning", DefaultValue = 60000)]
         public int TrainingHistoryBars { get; set; } = 60000;
@@ -545,12 +557,24 @@ namespace cAlgo.Robots
                 return;
             }
 
-            // Vérification native cTrader des horaires de session du symbole
-            bool isSessionClosed = !Symbol.MarketHours.IsOpened() || Symbol.MarketHours.TimeTillClose() <= TimeSpan.FromMinutes(5);
+            // Clôture EOD à heure UTC fixe (21h00 par défaut), identique aux backtests C#.
+            // L'horloge broker (MarketHours) reste utilisée en second garde-fou, mais elle ne
+            // peut pas servir de référence de parité : elle dépend du symbole et du courtier.
+            TimeSpan nowUtcTod = Server.TimeInUtc.TimeOfDay;
+            TimeSpan eodCloseUtc = TimeSpan.FromHours(EodCloseUtcHours);
+            TimeSpan entryCutoffUtc = TimeSpan.FromHours(EntryCutoffUtcHours);
+
+            bool isAfterEodUtc = nowUtcTod >= eodCloseUtc;
+            bool isSessionClosed = isAfterEodUtc
+                                   || !Symbol.MarketHours.IsOpened()
+                                   || Symbol.MarketHours.TimeTillClose() <= TimeSpan.FromMinutes(5);
 
             // Clôture automatique hors-session pour éliminer les spreads larges
             if (isSessionClosed)
             {
+                if (isAfterEodUtc && Positions.FindAll("MlofiFtmo").Length > 0)
+                    Print($"🌙 CLÔTURE EOD {EodCloseUtcHours:F2}h UTC atteinte — liquidation des positions.");
+
                 var activePositions = Positions.FindAll("MlofiFtmo");
                 foreach (var pos in activePositions)
                 {
@@ -574,6 +598,15 @@ namespace cAlgo.Robots
             }
 
             ManageBreakEven();
+
+            // Cutoff d'entrée (18h30 UTC par défaut) : aucune NOUVELLE position au-delà, afin de
+            // laisser du temps de session avant la clôture EOD. Le BE ci-dessus continue de
+            // gérer les positions déjà ouvertes. Absent jusqu'ici côté cBot alors que les deux
+            // backtests C# l'appliquent — c'était une divergence de parité.
+            if (nowUtcTod >= entryCutoffUtc)
+            {
+                return;
+            }
 
             int activeTotalCount = Positions.FindAll("MlofiFtmo").Length + PendingOrders.Where(o => o.Label == "MlofiFtmo").Count();
             if (activeTotalCount >= MaxConcurrentTrades) return;
@@ -739,10 +772,27 @@ namespace cAlgo.Robots
             if (slDistance <= (0.05 * ratio)) slDistance = 0.50 * ratio;
             if (tpDistance <= (0.05 * ratio)) tpDistance = 1.00 * ratio;
 
-            double volumeLots = Symbol.VolumeInUnitsToQuantity(riskBudgetDollars / slDistance);
+            // Dual-cap sizing : risque ET valeur notionnelle.
+            // Sans le cap notionnel, un SL très serré (ATR faible) produisait une taille
+            // arbitrairement grande — aucun garde-fou de levier n'existait côté cBot.
+            double unitsByRisk = riskBudgetDollars / slDistance;
+
+            int maxPositions = Math.Max(1, MaxConcurrentTrades);
+            double maxNotionalPerPosition = Account.Equity * (MaxLeverage / maxPositions);
+            double unitsByNotionalCap = maxNotionalPerPosition / localPrice;
+
+            double unitsCapped = Math.Min(unitsByRisk, unitsByNotionalCap);
+
+            double volumeLots = Symbol.VolumeInUnitsToQuantity(unitsCapped);
             volumeLots = Symbol.NormalizeVolumeInUnits(volumeLots, RoundingMode.ToNearest);
 
             if (volumeLots <= 0) return;
+
+            if (unitsByNotionalCap < unitsByRisk)
+            {
+                Print($"⚖️ CAP NOTIONNEL APPLIQUÉ : sizing risque={unitsByRisk:N0} unités -> plafonné à {unitsByNotionalCap:N0} " +
+                      $"(levier max {MaxLeverage:F1}x / {maxPositions} positions = {MaxLeverage / maxPositions:F2}x equity par trade).");
+            }
 
             TradeType tradeType = isBuySetup ? TradeType.Buy : TradeType.Sell;
             double slPips = slDistance / Symbol.PipSize;
@@ -772,8 +822,10 @@ namespace cAlgo.Robots
                 double currentProfitPips = pos.Pips;
                 double tpDistancePips = Math.Abs(pos.TakeProfit.GetValueOrDefault() - pos.EntryPrice) / Symbol.PipSize;
 
-                // Déplacement du Stop Loss à Break-Even dès 50% du TP atteint (sécurise les trades très tôt)
-                if (currentProfitPips >= tpDistancePips * 0.50)
+                // Déplacement du Stop Loss à Break-Even. Seuil paramétrable, aligné sur les
+                // backtests C# (0.80 du TP) : à 0.50 le live coupait les trades plus tôt que
+                // le backtest, ce qui rendait les deux non comparables.
+                if (currentProfitPips >= tpDistancePips * BreakEvenTriggerPct)
                 {
                     if (pos.TradeType == TradeType.Buy && (pos.StopLoss == null || pos.StopLoss < pos.EntryPrice))
                     {
