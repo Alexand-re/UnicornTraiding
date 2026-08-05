@@ -184,11 +184,11 @@ namespace cAlgo.Robots
         [Parameter("Capital Initial FTMO ($)", Group = "2. Risk Management FTMO", DefaultValue = 100000.0)]
         public double InitialCapital { get; set; } = 100000.0;
 
-        [Parameter("Risque Par Trade (%)", Group = "2. Risk Management FTMO", DefaultValue = 0.10)]
-        public double RiskPerTradePct { get; set; } = 0.10;
+        [Parameter("Risque Par Trade (%)", Group = "2. Risk Management FTMO", DefaultValue = 0.25)]
+        public double RiskPerTradePct { get; set; } = 0.25;
 
-        [Parameter("Max Positions Simultanées", Group = "2. Risk Management FTMO", DefaultValue = 10)]
-        public int MaxConcurrentTrades { get; set; } = 10;
+        [Parameter("Max Positions Simultanées", Group = "2. Risk Management FTMO", DefaultValue = 3)]
+        public int MaxConcurrentTrades { get; set; } = 3;
 
         [Parameter("Levier Notionnel Max (x Equity)", Group = "2. Risk Management FTMO", DefaultValue = 1.0)]
         public double MaxLeverage { get; set; } = 1.0;
@@ -730,7 +730,12 @@ namespace cAlgo.Robots
                 else blockReason = $"MLOFI Neutre ({mlofiScore:+0.00;-0.00})";
             }
 
-            Print($"🔍 [Analyse {Server.Time:HH:mm:ss}] SPY: ${currentPrice:F2} (EMA20: ${ema20:F2}) | MLOFI: {mlofiScore:+0.00;-0.00} | Vol: {volRatio:F1}x | Status: {(isBuySetup ? "BUY SETUP 🟢" : isSellSetup ? "SELL SETUP 🔴" : $"EN ATTENTE ⏳ [{blockReason}]")}");
+            string decision = isBuySetup ? "SIGNAL_LONG" : isSellSetup ? "SIGNAL_SHORT" : "AUCUN_SIGNAL";
+
+            // Log complet à CHAQUE barre (indicateurs + décision), qu'un signal soit déclenché
+            // ou non — permet une comparaison ligne-à-ligne avec le backtest (même format que le
+            // service live H2Swing du projet dataestimateintraday).
+            Print($"🔍 [Analyse {Server.Time:yyyy-MM-dd HH:mm:ss}] SPY: ${currentPrice:F2} ema20=${ema20:F2} ema50=${ema50:F2} atr1m={atr1m:F4} rsi14={rsi14:F1} mlofi={mlofiScore:+0.00;-0.00} volRatio={volRatio:F2}x volSpike={isVolumeSpike} isBuySetup={isBuySetup} isSellSetup={isSellSetup} decision={decision}{(decision == "AUCUN_SIGNAL" ? $" reason=[{blockReason}]" : "")}");
 
             if (!isBuySetup && !isSellSetup) return;
 
